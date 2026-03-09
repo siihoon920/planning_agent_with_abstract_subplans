@@ -144,7 +144,7 @@ function DKGCombinedCallback(
     # Construct plotting callbacks
     if plot_goal_bars || plot_goal_lines
         if render
-            resize!(figure, 1200, renderer.resolution[2])
+            # resize!(figure, 1200, renderer.resolution[2])
             side_layout = GridLayout(figure[1, 2])
         else
             figure = Figure(resolution=renderer.resolution)
@@ -323,6 +323,6 @@ function storyboard_goal_lines!(
     end
     # Resize figure to fit new plot
     rowsize!(storyboard.layout, n_rows+1, Auto(0.25))
-    resize!(storyboard, (width, height * 1.3))
+    # resize!(storyboard, (width, height * 1.3))
     return storyboard
 end
