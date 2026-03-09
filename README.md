@@ -7,8 +7,7 @@ Download Julia in the terminal or from Julia Website (If you haven't done so)
 
     brew install juliaup.
 
-Clone the repository in directory of your choice   
-(original tells us to use `add` and use chunks of their code to our liking, but I think exactly cloning the original helps more at this stage for us)
+Clone this repository in directory of your choice   
 
     git clone git@github.com:siihoon920/planning_agent_with_abstract_subplans.git
     
@@ -29,3 +28,5 @@ Then inside julia, enter packages by typing `]`. You'll see your terminal say 'p
     activate .
     instantiate
     
+## Changes so far
+
