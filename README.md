@@ -29,4 +29,11 @@ Then inside julia, enter packages by typing `]`. You'll see your terminal say 'p
     instantiate
     
 ## Changes so far
+`example.jl` 
+- functions of the package GLMakie fixed to suit latest version
+- file outputs (2 gif's 1 png) now saves as files (previously disappears after run)
+  
+## notes
 
+Plinf Minimum Structure notes (prone to updates), to help quickly understand 
+https://web.goodnotes.com/s/tGMu55c04BUG8SRlZjBhge
