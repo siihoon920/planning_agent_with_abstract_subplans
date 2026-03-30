@@ -29,11 +29,16 @@ log_pq(op, queue, search_tree) = begin
     for (qid, pr) in collect(queue)
         node = get(search_tree, qid, nothing)
         if isnothing(node)
-            println("  id=$(qid), pr=$(pr) (missing node)")
+            println("  id=$(qid), priority=$(pr) (missing node)")
             continue
         end
         st = node.state
-        println("  id=$(qid) pr=$(pr) cost=$(node.path_cost)")
+        if pr isa Tuple && length(pr) == 3
+            f, h, n = pr
+            println("  id=$(qid) priority=(f=$f, h=$h, n=$n) cost=$(node.path_cost)")
+        else
+            println("  id=$(qid) priority=$pr cost=$(node.path_cost)")
+        end
         println("    facts: ", collect(PDDL.get_facts(st)))
         println("    fluents: ", join(
             [string(k, "=", v) for (k, v) in PDDL.get_fluents(st) if k != :walls], ", "

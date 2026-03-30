@@ -14,7 +14,7 @@ include("AbstractPlanner.jl")
 
 # Load the domain and problem-1
 domain = PDDL.load_domain("examples/doors-keys-gems/domain.pddl")
-problem = PDDL.load_problem("examples/doors-keys-gems/problems/problem-1.pddl")
+problem = PDDL.load_problem("examples/doors-keys-gems/problems/problem-3.pddl")
 
 # Initialize state, spec, and compile for better performance
 state = PDDL.initstate(domain, problem)
@@ -22,9 +22,9 @@ spec = SymbolicPlanners.Specification(problem)
 domain, state = PDDL.compiled(domain, state)
 
 # Initialize a ProbAStarPlanner using RelaxedMazeDist heuristic from utils.jl
-planner = SymbolicPlanners.ProbAStarPlanner(RelaxedMazeDist(), save_search=true)
+planner = SymbolicPlanners.ProbAStarPlanner(GoalManhattan(), save_search=true)
 
-println("Starting abstract search on problem 1...")
+println("Starting abstract search on problem 3...")
 
 # Run the abstract search via AbstractPlanner module
 sol = AbstractPlanner.solve(planner, domain, state, spec)

@@ -74,3 +74,8 @@ Tests are located in `test/runtests.jl`. Run them via the package manager:
 
 ### Working with `src_new`
 The files in `src_new/` are part of an ongoing transition towards abstract subplans. When modifying planning logic, consider both the legacy `src/modeling/agents/plans.jl` and the newer `src_new/` implementations.
+
+Doors-Keys-Gems custom heuristics (utils.jl):
+GoalManhattan: counts remaining goal objects plus Manhattan distance from agent to nearest needed object.
+RelaxedMazeDist: wraps a relaxed planner (default AStarPlanner(GoalManhattan())) that “unlocks all doors” via unlock_doors, then uses the relaxed plan length as a distance estimate.
+Abstract planner example: The abstract planner in abstract_example.jl uses ProbAStarPlanner(RelaxedMazeDist()) for high-level search over subgoals discovered by the physical planner.

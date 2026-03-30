@@ -123,7 +123,7 @@ function search!(
             end
 
             DataStructures.dequeue!(queue)
-            log_pq("dequeue", queue, search_tree)
+            # log_pq("dequeue", queue, search_tree)
 
             if sol.status == :in_progress 
             # if search didn't reach a subgoal(=deadend) above, then expand -> limit search space within reachable subgoals this ways
@@ -197,10 +197,10 @@ function expand!(
             node.child = LinkedNodeRef(next_id, nothing, node.child)
             if !(next_id in keys(queue))
                 DataStructures.enqueue!(queue, next_id, path_cost)
-                log_pq("enqueue", queue, search_tree)
+                # log_pq("enqueue", queue, search_tree)
             else
                 queue[next_id] = path_cost
-                log_pq("priority update", queue, search_tree)
+                # log_pq("priority update", queue, search_tree)
             end
         else
             next_node.parent.next = LinkedNodeRef(node.id, act, next_node.parent.next)
