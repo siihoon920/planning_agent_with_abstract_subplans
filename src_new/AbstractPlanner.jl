@@ -13,8 +13,6 @@ using Logging
 
 PDDL.Arrays.register!()
 
-# --- INTERNAL ALIASES ---
-# SymbolicPlanners unexported internals
 const LinkedNodeRef = SymbolicPlanners.LinkedNodeRef
 const reconstruct_internal = SymbolicPlanners.reconstruct
 const LoggerCallback   = SymbolicPlanners.LoggerCallback
@@ -43,6 +41,7 @@ log_pq(op, queue, search_tree) = begin
     end
 end
 
+"version of LinkedNodesRef for abstract states. Instead of a single physical action, a sequence of them lead to next abstract state"
 mutable struct MultipleLinkedNodesRef{
     S<:PDDL.State
 }
@@ -54,6 +53,7 @@ end
 
 MultipleLinkedNodesRef(id, plan, trajectory) = MultipleLinkedNodesRef(id, plan, trajectory, nothing) 
 
+"version of PathNode for abstract states. parent and child of an abstract node must be referred to with MultipleLinkedNodesRef"
 mutable struct AbstractPathNode{S <: PDDL.State}
     id::UInt
     state::S
@@ -65,6 +65,7 @@ end
 AbstractPathNode(id::UInt, state::S, path_cost::Real=0.0) where {S<:PDDL.State} = 
     AbstractPathNode{S}(id, state, Float32(path_cost), nothing, nothing)
 
+"similar to PathSearchSolution, but now can take AbstractPathNodeinput as input"
 mutable struct PathSearchSolution{S, T}
     status::Symbol
     plan::Vector{PDDL.Term}
@@ -78,22 +79,16 @@ end
 function solve(planner::SymbolicPlanners.ForwardPlanner,
                domain::PDDL.Domain, state::PDDL.State, spec::SymbolicPlanners.Specification)
     heuristic, save_search = planner.heuristic, planner.save_search
-    # Simplify goal specification
     spec = simplify_goal(spec, domain, state)
-    # Precompute heuristic information
+    # Just like in Forward.jl, precompute heuristic information
     SymbolicPlanners.precompute!(heuristic, domain, state, spec)
-    # Initialize solution
     sol = init_sol(planner, heuristic, domain, state, spec)
     log_pq("initial", sol.search_frontier, sol.search_tree)
-    # Check if initial state satisfies trajectory constraints
     if SymbolicPlanners.is_violated(spec, domain, state)
         sol.status = :failure
     else
         sol = search!(sol, planner, heuristic, domain, spec)
     end
-    # Print subgoal results
-    println("Status: ", sol.status)
-    # Return solution
     if save_search
         return sol
     elseif sol.status == :failure
@@ -156,13 +151,13 @@ function search!(sol::PathSearchSolution,
         # Determine parent action for goal checking
         parent_action = if isnothing(node.parent)
             nothing
+        # action goal has contraint on last action. Bring this up from last step of subplan
         elseif node.parent isa MultipleLinkedNodesRef
             isempty(node.parent.plan) ? nothing : node.parent.plan[end]
         else
             nothing
         end
 
-        # Check search termination criteria
         if SymbolicPlanners.is_goal(spec, domain, node.state, parent_action)
             sol.status = :success
         elseif SymbolicPlanners.on_goal_path(spec, domain, node.state)
@@ -211,7 +206,7 @@ function expand!(
 ) where {S <: PDDL.State}
     g_mult, h_mult = planner.g_mult, planner.h_mult
     state = node.state
-    # Call physical planner to get candidate next states
+    # from abstract state, call physical planner to get candidate next states
     subgoal = PhysicalPlanner.solve(domain, state)
 
     for i in 1:length(subgoal.path_costs)
@@ -263,6 +258,7 @@ function expand!(
     end
 end
 
+# similar to reconstruct in SymbolicPlanner, but uses MultipleLinkeNodesRef and connects abstract states
 function reconstruct(node_id::UInt, search_tree::Dict)
     plan, trajectory = PDDL.Term[], PDDL.State[]
     curr_id = node_id

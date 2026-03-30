@@ -30,26 +30,11 @@ mutable struct MultiplePathsSearchSolution{
     search_order::Vector{UInt}
 end
 
+"define abstract actions as subgoals"
 function abstract_actions(domain::PDDL.Domain, state::PDDL.State)
     ground = PDDL.ground(domain, state)
     actions = ground.actions
-    for action in actions
-        println(action.first)
-    end
     filtered_actions = filter(action -> action.first in (:pickup, :unlock), actions)
-
-    println("Detailed GroundAction Inspection:")
-
-    #=
-    for (key, group) in filtered_actions
-        for (term, action) in group.actions
-            println("--- Action: $term ---")
-            for field in fieldnames(typeof(action))
-                println("$field: ", getfield(action, field))
-            end
-        end
-    end
-    =#
 
     goals = SymbolicPlanners.ActionGoal[]
     for group in values(filtered_actions)
@@ -61,17 +46,13 @@ function abstract_actions(domain::PDDL.Domain, state::PDDL.State)
     return goals
 end
 
-"""
-    init_sol(domain, state)
-
-Initialize frontier and search tree for a Dijkstra-style physical search.
-"""
 function solve(domain::PDDL.Domain, state::PDDL.State)
     sol = init_sol(domain, state)
     sol = search!(sol, domain, abstract_actions(domain, state))
     return sol
 end
 
+"Initialize MultiplePathsSearchSolution for a Dijkstra-style physical search."
 function init_sol(domain::PDDL.Domain, state::PDDL.State)
     node_id = hash(state)
     node = PathNode(node_id, state, 0.0, LinkedNodeRef(node_id))
@@ -91,15 +72,7 @@ function init_sol(domain::PDDL.Domain, state::PDDL.State)
     return sol
 end
 
-"""
-    search!(sol, domain, specs)
-
-Dijkstra/Uniform-cost search without heuristics. Iterates over multiple
-subgoal specs. Returns the same `sol`, with `plans`/`trajectories` filled
-on success.
-"""
-
-# Lightweight logger: show queue plus a short state summary per entry
+"Lightweight logger: show queue plus a short state summary per entry"
 log_pq(op, queue, search_tree) = begin
     println("PQ after $op:")
     for (qid, pr) in collect(queue)
@@ -117,6 +90,11 @@ log_pq(op, queue, search_tree) = begin
     end
 end
 
+"""
+Dijkstra-style search explores all physical states 
+within search space bound by abstract subgoals,
+path cost is number of physical steps taken
+"""
 function search!(
     sol::MultiplePathsSearchSolution,
     domain::PDDL.Domain,
@@ -137,17 +115,18 @@ function search!(
             sol.status = :exhausted && break
         else
             parent_action = isnothing(node.parent) ? nothing : node.parent.action
-            for spec in specs
-                if SymbolicPlanners.is_goal(spec, domain, node.state, node.parent.action)
-                    sol.status = :deadend
-                    push!(reached_goals, node_id)
+            for spec in specs # for each subgoal
+                if SymbolicPlanners.is_goal(spec, domain, node.state, node.parent.action) 
+                    sol.status = :deadend # set status to deadend if a subgoal is reached
+                    push!(reached_goals, node_id) # save the id of the state in array reached_goals
                 end
             end
 
             DataStructures.dequeue!(queue)
             log_pq("dequeue", queue, search_tree)
 
-            if sol.status == :in_progress
+            if sol.status == :in_progress 
+            # if search didn't reach a subgoal(=deadend) above, then expand -> limit search space within reachable subgoals this ways
                 expand!(node, search_tree, queue, domain, specs)
                 sol.expanded += 1
                 push!(sol.search_order, node_id)
@@ -155,12 +134,15 @@ function search!(
         end
     end
 
-    if sol.status == :in_progress
+    if sol.status == :in_progress 
+    # if queue runs out while still in progress, 
+    # this means all states within bounded search spaced have been explored
         sol.status = :finished
     end
 
     if !isempty(reached_goals)
         for id in reached_goals
+        # add pathcost, plan and trajectory of each reached goal to MultiplePathsSearchSolution
             push!(sol.path_costs, search_tree[id].path_cost)
             plan, traj = reconstruct(id, search_tree)
             push!(sol.plans, plan)
@@ -172,7 +154,6 @@ function search!(
         for gid in reached_goals
             node = search_tree[gid]
             st = node.state
-            
             println("Goal node $gid (cost=$(node.path_cost))")
             println("  objects: ", PDDL.get_objtypes(st))
             println("  facts: ", collect(PDDL.get_facts(st)))
@@ -203,7 +184,9 @@ function expand!(
                 next_id = hash((next_state, act))
             end
         end
-
+        
+        # bring up path node if given state (arrived with given action) was already explored 
+        # otherwise create a new path node
         next_node = get!(search_tree, next_id) do
             PathNode{S}(next_id, next_state, Inf32)
         end
@@ -224,29 +207,5 @@ function expand!(
         end
     end
 end
-
-#=
-domain = PDDL.load_domain("examples/doors-keys-gems/domain.pddl")
-problem = PDDL.load_problem("examples/doors-keys-gems/problems/problem-1.pddl")
-
-state = PDDL.initstate(domain, problem)
-spec = SymbolicPlanners.Specification(problem)
-
-domain, state = PDDL.compiled(domain, state)
-
-sol = init_sol(domain, state)
-sol = search!(sol, domain, abstract_actions(domain, state))
-
-println("Status: ", sol.status)
-for (i, g) in pairs(subgoals)
-    if i <= length(sol.plans)
-        println("Subgoal $i $g")
-        println("  Plan length = ", length(sol.plans[i]))
-        println("  Plan = ", sol.plans[i])
-    else
-        println("Subgoal $i $g not reached")
-    end
-end
-=#
 
 end # module PhysicalPlanner
