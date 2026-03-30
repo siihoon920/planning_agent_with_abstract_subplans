@@ -1,13 +1,14 @@
-import DataStructures
-import PDDL
-import Printf
-import SymbolicPlanners
-import Gen
-import GenParticleFilters
-import PDDLViz
-import GLMakie
+using PDDL              # bare names needed by utils.jl (@pddl_str, State, Domain, etc.)
+using SymbolicPlanners  # bare names needed by utils.jl (Heuristic, Planner, AStarPlanner, etc.)
+using PDDLViz           # bare names needed by utils.jl (GridworldRenderer, Canvas, etc.)
+using GLMakie           # bare names needed by utils.jl (Figure, GridLayout, etc.)
+using Plinf             # bare names needed by utils.jl (SIPSCallback, etc.)
+using DataStructures    # bare names needed by utils.jl (OrderedDict)
+using Gen
+using GenParticleFilters
+using Printf
 
-include("../examples/doors-keys-gems/utils.jl")  # brings in GoalManhattan
+include("../examples/doors-keys-gems/utils.jl")
 include("PhysicalPlanner.jl")
 include("AbstractPlanner.jl")
 

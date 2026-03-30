@@ -5,8 +5,6 @@ using SymbolicPlanners
 using DataStructures
 
 
-# --- IMPORT INTERNALS VIA ALIAS ---
-# SymbolicPlanners internals (unexported)
 const PathNode = SymbolicPlanners.PathNode
 const LinkedNodeRef = SymbolicPlanners.LinkedNodeRef
 const reconstruct = SymbolicPlanners.reconstruct
@@ -16,18 +14,19 @@ mutable struct MultiplePathsSearchSolution{
 }
     "Status of the returned solution."
     status::Symbol
-    "Sequence of actions that reach the goal. May be partial / incomplete."
+    "Sequence of actions that reach the subgoal."
     plans::Vector{Vector{PDDL.Term}}
-    "Trajectory of states that will be traversed while following the plan."
+    "Trajectory of states that will be traversed while following the subplan."
     trajectories::Vector{Vector{S}}
-    "Number of nodes expanded during search."
-    reached_goals::Vector{UInt}
+    "Number of physical nodes expanded during search."
+    path_costs::Vector{Float32}
+    "path cost of subplan"
     expanded::Int
-    "Tree of [`PathNode`](@ref)s expanded or evaluated during search."
+    "Tree of physical pathnodes expanded or evaluated during physical search."
     search_tree::Union{Dict{UInt,PathNode{S}}}
-    "Frontier of yet-to-be-expanded search nodes (stored as references)."
+    "Frontier of yet-to-be-expanded search physical nodes (stored as references)."
     search_frontier::T
-    "Order of nodes expanded during search (stored as references)."
+    "Order of nodes expanded during physical search (stored as references)."
     search_order::Vector{UInt}
 end
 
@@ -70,7 +69,7 @@ Initialize frontier and search tree for a Dijkstra-style physical search.
 function solve(domain::PDDL.Domain, state::PDDL.State)
     sol = init_sol(domain, state)
     sol = search!(sol, domain, abstract_actions(domain, state))
-    return SymbolicPlanners.PathSearchSolution(sol.status, sol.plans, sol.trajectories)
+    return sol
 end
 
 function init_sol(domain::PDDL.Domain, state::PDDL.State)
@@ -83,7 +82,7 @@ function init_sol(domain::PDDL.Domain, state::PDDL.State)
         :in_progress,
         Vector{Vector{PDDL.Term}}(),
         Vector{Vector{typeof(state)}}(),
-        UInt[],
+        Float32[],
         0,
         search_tree,
         queue,
@@ -124,7 +123,7 @@ function search!(
     specs::AbstractVector{<:SymbolicPlanners.Specification}
 ) where {S <: PDDL.State}
     start_time = time()
-    reached_goals = sol.reached_goals
+    reached_goals = UInt[]
     queue, search_tree = sol.search_frontier, sol.search_tree
 
     while length(queue) > 0
@@ -162,23 +161,26 @@ function search!(
 
     if !isempty(reached_goals)
         for id in reached_goals
+            push!(sol.path_costs, search_tree[id].path_cost)
             plan, traj = reconstruct(id, search_tree)
             push!(sol.plans, plan)
             push!(sol.trajectories, traj)
         end
     end
-
-    for gid in sol.reached_goals
-        node = search_tree[gid]
-        st = node.state
-        println("Goal node $gid (cost=$(node.path_cost))")
-        println("  objects: ", PDDL.get_objtypes(st))
-        println("  facts: ", collect(PDDL.get_facts(st)))
-        println("  fluents: ", join(
-            [string(k, "=", v) for (k, v) in PDDL.get_fluents(st) if k != :walls], ", "
-        ))
+    
+    if !isempty(reached_goals)
+        for gid in reached_goals
+            node = search_tree[gid]
+            st = node.state
+            
+            println("Goal node $gid (cost=$(node.path_cost))")
+            println("  objects: ", PDDL.get_objtypes(st))
+            println("  facts: ", collect(PDDL.get_facts(st)))
+            println("  fluents: ", join(
+                [string(k, "=", v) for (k, v) in PDDL.get_fluents(st) if k != :walls], ", "
+            ))
+        end
     end
-
     return sol
 end
 

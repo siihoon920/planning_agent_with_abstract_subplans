@@ -15,9 +15,8 @@ PDDL.Arrays.register!()
 
 # --- INTERNAL ALIASES ---
 # SymbolicPlanners unexported internals
-const PathNode      = SymbolicPlanners.PathNode
 const LinkedNodeRef = SymbolicPlanners.LinkedNodeRef
-const reconstruct   = SymbolicPlanners.reconstruct
+const reconstruct_internal = SymbolicPlanners.reconstruct
 const LoggerCallback   = SymbolicPlanners.LoggerCallback
 const simplify_goal    = SymbolicPlanners.simplify_goal
 const prob_peek        = SymbolicPlanners.prob_peek
@@ -25,6 +24,56 @@ const prob_dequeue!    = SymbolicPlanners.prob_dequeue!
 
 include("../examples/doors-keys-gems/utils.jl")
 include("PhysicalPlanner.jl")
+
+# Lightweight logger: show queue plus a short state summary per entry
+log_pq(op, queue, search_tree) = begin
+    println("Abstract level PQ after $op:")
+    for (qid, pr) in collect(queue)
+        node = get(search_tree, qid, nothing)
+        if isnothing(node)
+            println("  id=$(qid), pr=$(pr) (missing node)")
+            continue
+        end
+        st = node.state
+        println("  id=$(qid) pr=$(pr) cost=$(node.path_cost)")
+        println("    facts: ", collect(PDDL.get_facts(st)))
+        println("    fluents: ", join(
+            [string(k, "=", v) for (k, v) in PDDL.get_fluents(st) if k != :walls], ", "
+        ))
+    end
+end
+
+mutable struct MultipleLinkedNodesRef{
+    S<:PDDL.State
+}
+    id::UInt
+    plan::Vector{PDDL.Term}
+    trajectory::Vector{S}
+    next::Union{MultipleLinkedNodesRef, Nothing}
+end
+
+MultipleLinkedNodesRef(id, plan, trajectory) = MultipleLinkedNodesRef(id, plan, trajectory, nothing) 
+
+mutable struct AbstractPathNode{S <: PDDL.State}
+    id::UInt
+    state::S
+    path_cost::Float32
+    parent::Union{MultipleLinkedNodesRef{S},Nothing}
+    child::Union{MultipleLinkedNodesRef{S},Nothing}
+end
+
+AbstractPathNode(id::UInt, state::S, path_cost::Real=0.0) where {S<:PDDL.State} = 
+    AbstractPathNode{S}(id, state, Float32(path_cost), nothing, nothing)
+
+mutable struct PathSearchSolution{S, T}
+    status::Symbol
+    plan::Vector{PDDL.Term}
+    trajectory::Vector{S}
+    expanded::Int
+    search_tree::Dict{UInt, AbstractPathNode{S}}
+    search_frontier::T
+    search_order::Vector{UInt}
+end
 
 function solve(planner::SymbolicPlanners.ForwardPlanner,
                domain::PDDL.Domain, state::PDDL.State, spec::SymbolicPlanners.Specification)
@@ -35,6 +84,7 @@ function solve(planner::SymbolicPlanners.ForwardPlanner,
     SymbolicPlanners.precompute!(heuristic, domain, state, spec)
     # Initialize solution
     sol = init_sol(planner, heuristic, domain, state, spec)
+    log_pq("initial", sol.search_frontier, sol.search_tree)
     # Check if initial state satisfies trajectory constraints
     if SymbolicPlanners.is_violated(spec, domain, state)
         sol.status = :failure
@@ -43,36 +93,27 @@ function solve(planner::SymbolicPlanners.ForwardPlanner,
     end
     # Print subgoal results
     println("Status: ", sol.status)
-    for (i, g) in pairs(current_subgoals)
-        if i <= length(sol.plans)
-            println("Subgoal $i $g")
-            println("  Plan length = ", length(sol.plans[i]))
-            println("  Plan = ", sol.plans[i])
-        else
-            println("Subgoal $i $g not reached")
-        end
-    end
     # Return solution
     if save_search
         return sol
     elseif sol.status == :failure
         return SymbolicPlanners.NullSolution(sol.status)
     else
-        return SymbolicPlanners.PathSearchSolution(sol.status, sol.plan, sol.trajectory)
+        return sol
     end
 end
 
 function init_sol(planner::SymbolicPlanners.ForwardPlanner, heuristic::SymbolicPlanners.Heuristic,
                   domain::PDDL.Domain, state::PDDL.State, spec::SymbolicPlanners.Specification)
     node_id = hash(state)
-    node = PathNode(node_id, state, 0.0, LinkedNodeRef(node_id))
+    node = AbstractPathNode(node_id, state, 0.0f0, nothing, nothing)
     search_tree = Dict(node_id => node)
     SymbolicPlanners.ensure_precomputed!(heuristic, domain, state, spec)
     h_val::Float32 = SymbolicPlanners.compute(heuristic, domain, state, spec)
     priority = (planner.h_mult * h_val, h_val, 0)
     queue = DataStructures.PriorityQueue(node_id => priority)
     search_order = UInt[]
-    sol = SymbolicPlanners.PathSearchSolution(
+    sol = PathSearchSolution(
         :in_progress, PDDL.Term[], Vector{typeof(state)}(),
         0, search_tree, queue, search_order
     )
@@ -80,7 +121,7 @@ function init_sol(planner::SymbolicPlanners.ForwardPlanner, heuristic::SymbolicP
 end
 
 function reinit_sol!(
-    sol::SymbolicPlanners.PathSearchSolution{S, T},
+    sol::PathSearchSolution{S, T},
     planner::SymbolicPlanners.ForwardPlanner, heuristic::SymbolicPlanners.Heuristic,
     domain::PDDL.Domain, state::PDDL.State, spec::SymbolicPlanners.Specification
 ) where {S, T <: DataStructures.PriorityQueue}
@@ -91,7 +132,7 @@ function reinit_sol!(
     empty!(sol.search_order)
     empty!(search_tree)
     node_id = hash(state)
-    node = PathNode(node_id, state, 0.0, LinkedNodeRef(node_id))
+    node = AbstractPathNode(node_id, state, 0.0f0, nothing, nothing)
     search_tree[node_id] = node
     empty!(queue)
     SymbolicPlanners.ensure_precomputed!(heuristic, domain, state, spec)
@@ -101,7 +142,7 @@ function reinit_sol!(
     return sol
 end
 
-function search!(sol::SymbolicPlanners.PathSearchSolution,
+function search!(sol::PathSearchSolution,
                  planner::SymbolicPlanners.ForwardPlanner, heuristic::SymbolicPlanners.Heuristic,
                  domain::PDDL.Domain, spec::SymbolicPlanners.Specification)
     search_noise = planner.search_noise
@@ -111,8 +152,18 @@ function search!(sol::SymbolicPlanners.PathSearchSolution,
         node_id, priority = isnothing(search_noise) ?
             Base.peek(queue) : prob_peek(queue, search_noise)
         node = search_tree[node_id]
+        
+        # Determine parent action for goal checking
+        parent_action = if isnothing(node.parent)
+            nothing
+        elseif node.parent isa MultipleLinkedNodesRef
+            isempty(node.parent.plan) ? nothing : node.parent.plan[end]
+        else
+            nothing
+        end
+
         # Check search termination criteria
-        if SymbolicPlanners.is_goal(spec, domain, node.state, node.parent.action)
+        if SymbolicPlanners.is_goal(spec, domain, node.state, parent_action)
             sol.status = :success
         elseif SymbolicPlanners.on_goal_path(spec, domain, node.state)
             sol.status = :success
@@ -127,6 +178,7 @@ function search!(sol::SymbolicPlanners.PathSearchSolution,
         if sol.status == :in_progress
             isnothing(search_noise) ?
                 DataStructures.dequeue!(queue) : delete!(queue, node_id)
+            log_pq("dequeue", queue, search_tree)
             expand!(planner, heuristic, node, search_tree, queue, domain, spec)
             sol.expanded += 1
             if planner.save_search && planner.save_search_order
@@ -152,61 +204,89 @@ end
 
 function expand!(
     planner::SymbolicPlanners.ForwardPlanner, heuristic::SymbolicPlanners.Heuristic,
-    node::PathNode{S},
-    search_tree::Dict{UInt,PathNode{S}},
+    node::AbstractPathNode{S},
+    search_tree::Dict{UInt,AbstractPathNode{S}},
     queue::DataStructures.PriorityQueue,
     domain::PDDL.Domain, spec::SymbolicPlanners.Specification
 ) where {S <: PDDL.State}
     g_mult, h_mult = planner.g_mult, planner.h_mult
     state = node.state
     # Call physical planner to get candidate next states
-    physical_sol = PhysicalPlanner.solve(domain, state)
+    subgoal = PhysicalPlanner.solve(domain, state)
 
-    for i in length(physical_sol.path_costs)
-        next_state = physical_sol.trajectories[i][end]   # fixed: [end] not [-1]
-        next_id = hash(next_state)
-        if SymbolicPlanners.is_violated(spec, domain, next_state) continue end
-        act_cost = physical_sol.path_costs[i]
+    for i in 1:length(subgoal.path_costs)
+        subgoal_state = subgoal.trajectories[i][end]
+        subgoal_action = subgoal.plans[i][end]
+        subgoal_id = hash(subgoal_state)
+        if SymbolicPlanners.is_violated(spec, domain, subgoal_state) continue end
+        act_cost = subgoal.path_costs[i]
         path_cost = node.path_cost + act_cost
         is_action_goal = false
         if SymbolicPlanners.has_action_goal(spec) &&
-           SymbolicPlanners.is_goal(spec, domain, next_state, act)
+           SymbolicPlanners.is_goal(spec, domain, subgoal_state, subgoal_action)
             is_action_goal = true
-            next_id = hash((next_state, act))
+            subgoal_id = hash((subgoal_state, subgoal_action))
         end
-        next_node = get!(search_tree, next_id) do
-            PathNode{S}(next_id, next_state, Inf32)
+        next_node = get!(search_tree, subgoal_id) do
+            AbstractPathNode(subgoal_id, subgoal_state, Inf32)
         end
         cost_diff = next_node.path_cost - path_cost
         if cost_diff > 0
             next_node.path_cost = path_cost
             if planner.save_parents
-                next_node.parent = LinkedNodeRef(node.id, act, next_node.parent)
+                next_node.parent = MultipleLinkedNodesRef(node.id, subgoal.plans[i], subgoal.trajectories[i], next_node.parent)
             else
-                next_node.parent = LinkedNodeRef(node.id, act)
+                next_node.parent = MultipleLinkedNodesRef(node.id, subgoal.plans[i], subgoal.trajectories[i])
             end
+            
             if planner.save_children
-                node.child = LinkedNodeRef(next_id, nothing, node.child)
+                node.child = MultipleLinkedNodesRef(subgoal_id, nothing, nothing, node.child)
             end
-            if !(next_id in keys(queue))
+            
+            if !(subgoal_id in keys(queue))
                 h_val::Float32 = is_action_goal ?
-                    0.0f0 : SymbolicPlanners.compute(heuristic, domain, next_state, spec)
+                    0.0f0 : SymbolicPlanners.compute(heuristic, domain, subgoal_state, spec)
                 f_val::Float32 = g_mult * path_cost + h_mult * h_val
                 priority = (f_val, h_val, length(search_tree))
-                DataStructures.enqueue!(queue, next_id, priority)
+                DataStructures.enqueue!(queue, subgoal_id, priority)
+                log_pq("enqueue", queue, search_tree)
             else
-                f_val, h_val, n_nodes = queue[next_id]
-                queue[next_id] = (f_val - cost_diff, h_val, n_nodes)
+                f_val, h_val, n_nodes = queue[subgoal_id]
+                queue[subgoal_id] = (f_val - cost_diff, h_val, n_nodes)
+                log_pq("priority update", queue, search_tree)
             end
+            
         elseif planner.save_parents
             next_node.parent.next =
-                LinkedNodeRef(node.id, act, next_node.parent.next)
+                MultipleLinkedNodesRef(node.id, subgoal.plans[i], subgoal.trajectories[i], next_node.parent.next)
         end
     end
 end
 
+function reconstruct(node_id::UInt, search_tree::Dict)
+    plan, trajectory = PDDL.Term[], PDDL.State[]
+    curr_id = node_id
+    while haskey(search_tree, curr_id)
+        node = search_tree[curr_id]
+        if isempty(trajectory)
+            push!(trajectory, node.state)
+        end
+        parent_ref = node.parent
+        if isnothing(parent_ref) || parent_ref.id == curr_id
+            break
+        end
+        # parent_ref is MultipleLinkedNodesRef
+        prepend!(plan, parent_ref.plan)
+        # parent_ref.trajectory has states from parent to current.
+        # The last state is current node.state, which is already in trajectory.
+        prepend!(trajectory, parent_ref.trajectory[1:end-1])
+        curr_id = parent_ref.id
+    end
+    return plan, trajectory
+end
+
 function refine!(
-    sol::SymbolicPlanners.PathSearchSolution{S, T},
+    sol::PathSearchSolution{S, T},
     planner::SymbolicPlanners.ForwardPlanner,
     domain::PDDL.Domain, state::PDDL.State, spec::SymbolicPlanners.Specification
 ) where {S, T <: DataStructures.PriorityQueue}
@@ -233,10 +313,10 @@ function refine!(
 end
 
 function reroot!(
-    sol::SymbolicPlanners.PathSearchSolution{S},
+    sol::PathSearchSolution{S, T},
     planner::SymbolicPlanners.ForwardPlanner, heuristic::SymbolicPlanners.Heuristic,
     domain::PDDL.Domain, state::S, spec::SymbolicPlanners.Specification
-) where {S <: PDDL.State}
+) where {S <: PDDL.State, T}
     h_mult, g_mult, callback = planner.h_mult, planner.g_mult, planner.callback
     queue, search_tree = sol.search_frontier, sol.search_tree
     verbose = callback isa LoggerCallback
@@ -252,7 +332,7 @@ function reroot!(
         return reinit_sol!(sol, planner, heuristic, domain, state, spec)
     end
     root_node = search_tree[root_id]
-    root_node.parent = LinkedNodeRef(root_id)
+    root_node.parent = nothing # Reset root parent
     verbose && Logging.@logmsg cb.loglevel "Marking nodes for deletion..."
     prev_root_id = hash(sol.trajectory[1])
     deleted = Set{UInt}()
@@ -287,26 +367,12 @@ function reroot!(
         del_node.parent = nothing
         while !isnothing(parent_ref)
             parent_id = parent_ref.id
-            parent_act = parent_ref.action
             parent_ref = parent_ref.next
             parent_id in deleted && continue
             parent_id in keys(search_tree) || continue
             parent_id in keys(queue) && continue
             parent = search_tree[parent_id]
-            act_cost = SymbolicPlanners.get_cost(spec, domain, parent.state,
-                                                  parent_act, del_state)
-            path_cost = parent.path_cost + act_cost
-            if path_cost < del_node.path_cost
-                del_node.path_cost = path_cost
-                del_node.parent =
-                    LinkedNodeRef(parent_id, parent_act, del_node.parent)
-                parent.child =
-                    LinkedNodeRef(del_id, nothing, parent.child)
-                push!(adopters, parent_id)
-            else
-                del_node.parent.next =
-                    LinkedNodeRef(parent_id, parent_act, del_node.parent.next)
-            end
+            push!(adopters, parent_id)
         end
         in_queue = haskey(queue, del_id)
         in_queue || (sol.expanded -= 1)
@@ -322,10 +388,6 @@ function reroot!(
             n_adopted += 1
         end
     end
-    for parent_id in adopters
-        parent = search_tree[parent_id]
-        parent.child = unique(parent.child)
-    end
     if verbose
         n_marked = length(deleted)
         n_deleted = length(deleted) - n_adopted
@@ -339,7 +401,7 @@ end
 
 function (cb::LoggerCallback)(
     planner::SymbolicPlanners.ForwardPlanner,
-    sol::SymbolicPlanners.PathSearchSolution,
+    sol::PathSearchSolution,
     node_id::Union{UInt, Nothing}, priority
 )
     node = isnothing(node_id) ? nothing : sol.search_tree[node_id]
