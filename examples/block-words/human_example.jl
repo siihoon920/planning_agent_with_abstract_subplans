@@ -5,13 +5,20 @@ using PDDLViz, GLMakie
 using DelimitedFiles
 
 include("utils.jl")
+include("../../domains/block-words/experiment-scenarios.jl")
 
 println("Saving outputs to: ", @__DIR__)
 
-#--- Initial Setup ---#
+#--- Experiment Setup ---#
+# Allow passing experiment ID via command line, defaulting to 1_1
+exp_id = get(ARGS, 1, "1_1")
+exp_id_dash = replace(exp_id, "_" => "-") # e.g. "1-1"
+
 # Load domain and problem
-domain = load_domain(joinpath(@__DIR__, "domain.pddl"))
-problem = load_problem(joinpath(@__DIR__, "problems", "problem-1.pddl"))
+domain_path = joinpath(@__DIR__, "../../domains/block-words/domain.pddl")
+problem_path = joinpath(@__DIR__, "../../domains/block-words/experiment-$exp_id_dash.pddl")
+domain = load_domain(domain_path)
+problem = load_problem(problem_path)
 
 # Initialize state and construct goal specification
 state = initstate(domain, problem)
@@ -25,33 +32,38 @@ renderer = BlocksworldRenderer(resolution=(800, 800))
 canvas = renderer(domain, state)
 
 #--- Generate Trajectory and Storyboard ---#
-# Use manually-specified trajectory from example.jl
-plan = @pddl("(pick-up o)","(stack o w)","(unstack r p)","(stack r o)",
-             "(unstack d a)","(put-down d)","(unstack a c)","(put-down a)",
-             "(pick-up c)", "(stack c r)")
+# Load plan from experiment scenarios mapping
+plan_strings = get_action(exp_id_dash)
+plan = [parse_pddl(a) for a in plan_strings]
 obs_traj = PDDL.simulate(domain, state, plan)
 
 anim = anim_plan(renderer, domain, state, plan;
                  format="gif", transition=PDDLViz.StepTransition(),
                  framerate=2)
 
+# Save the trajectory gif
+trajectory_gif_path = joinpath(@__DIR__, "human_trajectory_$exp_id.gif")
+save(trajectory_gif_path, anim)
+println("Saved trajectory animation to $trajectory_gif_path")
+
+# Generate storyboard frames (pick a few evenly spaced timesteps)
+ts = collect(1:max(1, div(length(plan), 3)):length(plan)+1)
 storyboard = render_storyboard(
-    anim, [1, 3, 5, 7],
-    subtitles = ["(i) Initial state",
-                 "(ii) 'o' is stacked on 'w'",
-                 "(iii) 'r' is stacked on 'o'",
-                 "(iv) 'd' is unstacked from 'a'"],
-    xlabels = ["t = 1", "t = 3", "t = 5", "t = 7"],
+    anim, ts,
+    subtitles = ["t = $(t-1)" for t in ts], # t=1 is state at step 0
+    xlabels = ["t = $(t-1)" for t in ts],
     xlabelsize = 20, subtitlesize = 24,
-    n_rows = 2
+    n_rows = 1
 )
 
 #--- Model Configuration and Human Data ---#
-goal_words = sort(["draw", "crow", "rope", "power", "wade"])
-goal_colors = Makie.colorschemes[:plasma][1:32:32*length(goal_words)]
+# Load goals specific to this experiment config
+goal_words = sort(get_goal_space(exp_id_dash))
+# Create distinct colors for the goals
+goal_colors = Makie.colorschemes[:plasma][1:max(1, div(256, length(goal_words))):256]
 
-# Load Human Data
-csv_path = joinpath(@__DIR__, "../../domains/block-words/average_human_results_arrays/1_1.csv")
+# Load Human Data for this experiment
+csv_path = joinpath(@__DIR__, "../../domains/block-words/average_human_results_arrays/$(exp_id).csv")
 # Filter out empty lines to avoid parsing errors
 lines = filter(l -> !isempty(strip(l)), readlines(csv_path))
 human_data_1d = parse.(Float64, lines)
@@ -68,23 +80,24 @@ n_rows, n_cols = size(storyboard.layout)
 # Add series plot at the bottom of the storyboard
 ax, _ = series(
     storyboard[n_rows+1, 1:n_cols], human_goal_probs,
-    color = goal_colors, labels=goal_words,
+    color = goal_colors[1:length(goal_words)], labels=goal_words,
     axis = (xlabel="Time", ylabel = "Probability",
             limits=((1, size(human_goal_probs, 2)), (0, 1)))
 )
 axislegend(ax, ax, "Goals", framevisible=false)
 
 # Add vertical lines at timesteps
-ts = 1:size(human_goal_probs, 2)
-vlines!(ax, ts, color=:black, linestyle=:dash)
-positions = [(t + 0.1, 0.85) for t in ts]
-text_labels = ["t = $t" for t in ts]
+ts_all = collect(1:size(human_goal_probs, 2))
+vlines!(ax, ts_all, color=:black, linestyle=:dash)
+positions = [(t + 0.1, 0.85) for t in ts_all]
+text_labels = ["t = $t" for t in ts_all]
 text!(ax, positions; text=text_labels, color = :black, fontsize=14)
 
 # Resize to accommodate the new subplot
-rowsize!(storyboard.layout, n_rows+1, Auto(0.25))
-resize!(storyboard, 2000, 1200)
+rowsize!(storyboard.layout, n_rows+1, Auto(0.5))
+resize!(storyboard, 1600, 800)
 
 # Save human inference storyboard
-save(joinpath(@__DIR__, "human_goal_inference_storyboard.png"), storyboard)
-println("Saved human goal inference storyboard successfully!")
+storyboard_path = joinpath(@__DIR__, "human_goal_inference_storyboard_$exp_id.png")
+save(storyboard_path, storyboard)
+println("Saved human goal inference storyboard successfully to $storyboard_path!")
