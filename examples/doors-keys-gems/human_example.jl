@@ -6,6 +6,7 @@ using DelimitedFiles
 
 include("utils.jl")
 
+
 println("Saving outputs to: ", @__DIR__)
 
 # Allow passing experiment ID via command line, defaulting to 1_1
@@ -95,27 +96,106 @@ storyboard = render_storyboard(
     subtitlesize = 24
 )
 
+#--- SIPS Inference (SIPS / standard model) ---#
+
+@gen function goal_prior()
+    goal ~ uniform_discrete(1, length(goals))
+    return Specification(goals[goal])
+end
+
+goal_addr   = :init => :agent => :goal => :goal
+goal_strata = choiceproduct((goal_addr, 1:length(goals)))
+
+heuristic = RelaxedMazeDist()
+planner   = ProbAStarPlanner(heuristic, search_noise=0.1)
+
+agent_config = AgentConfig(
+    domain,
+    planner;
+    goal_config = StaticGoalConfig(goal_prior),
+    replan_args = (
+        prob_replan      = 0.1,
+        budget_dist      = shifted_neg_binom,
+        budget_dist_args = (2, 0.05, 1)
+    ),
+    act_epsilon = 0.05
+)
+
+obs_params = ObsNoiseParams(
+    (pddl"(xpos)",                            normal, 1.0),
+    (pddl"(ypos)",                            normal, 1.0),
+    (pddl"(forall (?d - door) (locked ?d))", 0.05),
+    (pddl"(forall (?i - item) (has ?i))",    0.05),
+    (pddl"(forall (?i - item) (offgrid ?i))",0.05)
+)
+
+obs_params = ground_obs_params(obs_params, domain, state)
+obs_terms  = collect(keys(obs_params))
+
+world_config = WorldConfig(
+    agent_config = agent_config,
+    env_config   = PDDLEnvConfig(domain, state),
+    obs_config   = MarkovObsConfig(domain, obs_params)
+)
+
+t_obs_iter = state_choicemap_pairs(obs_traj, obs_terms; batch_size=1)
+
+logger_cb = DataLoggerCallback(
+    t          = (t, pf) -> t::Int,
+    goal_probs = pf -> probvec(pf, goal_addr, 1:length(goals))::Vector{Float64},
+    lml_est    = pf -> log_ml_estimate(pf)::Float64,
+)
+
+sips = SIPS(
+    world_config,
+    resample_cond  = :ess,
+    rejuv_cond     = :periodic,
+    rejuv_kernel   = ReplanKernel(2),
+    period         = 2
+)
+
+n_samples = 120
+
+println("\nRunning SIPS with standard planner ($(n_samples) particles)...")
+pf_state = sips(
+    n_samples,
+    t_obs_iter;
+    init_args = (init_strata=goal_strata,),
+    callback  = logger_cb
+)
+
+# Save model goal-probability output (rows = timesteps, cols = goals)
+model_goal_probs  = reduce(hcat, logger_cb.data[:goal_probs])   # shape (n_goals, T)
+model_csv_path = joinpath(@__DIR__, "model_sips_goal_probs_$(exp_id).csv")
+open(model_csv_path, "w") do io
+    println(io, join(goal_names, ","))   # header
+    for t in 1:size(model_goal_probs, 2)
+        println(io, join(model_goal_probs[:, t], ","))
+    end
+end
+println("Saved SIPS model goal probabilities → $model_csv_path")
+
 #--- Load Human Data ---#
-csv_path = joinpath(@__DIR__, "../../domains/doors-keys-gems/average_human_results_arrays/$(exp_id).csv")
+csv_path      = joinpath(@__DIR__, "../../domains/doors-keys-gems/average_human_results_arrays/$(exp_id).csv")
 human_data_1d = vec(readdlm(csv_path, ',', Float64))
-n_goals = length(goals)
-n_time_steps = div(length(human_data_1d), n_goals)
+n_goals       = length(goals)
+n_time_steps  = div(length(human_data_1d), n_goals)
 
 # Reshape goal probs so time steps are columns
 human_goal_probs = reshape(human_data_1d, n_goals, n_time_steps)
 
 #--- Goal Probability Visualization ---#
-# Apply lines using storyboard_goal_lines! defined in utils.jl
 storyboard_goal_lines!(
     storyboard,
     human_goal_probs,
     collect(1:n_time_steps);
-    goal_names = goal_names,
+    goal_names  = goal_names,
     goal_colors = goal_colors,
-    show_legend=true
+    show_legend = true
 )
 
 # Save human inference storyboard
 storyboard_path = joinpath(@__DIR__, "human_goal_inference_storyboard_$exp_id.png")
 save(storyboard_path, storyboard)
-println("Saved human goal inference storyboard successfully to $storyboard_path!")
+println("Saved human goal inference storyboard → $storyboard_path")
+println("Model CSV → $model_csv_path")
