@@ -13,7 +13,7 @@ println("Saving outputs to: ", @__DIR__)
 exp_id = get(ARGS, 1, "1_1")
 
 # Find corresponding plan file and problem ID
-plans_dir = joinpath(@__DIR__, "../../domains/doors-keys-gems/plans")
+plans_dir = joinpath(@__DIR__, "plans")
 plan_files = readdir(plans_dir)
 matched_files = filter(f -> startswith(f, "$(exp_id)_"), plan_files)
 if isempty(matched_files)
@@ -28,8 +28,8 @@ prob_id = m === nothing ? "6" : m.captures[1]
 #--- Initial Setup ---#
 PDDL.Arrays.register!()
 
-domain_path = joinpath(@__DIR__, "../../domains/doors-keys-gems/domain.pddl")
-problem_path = joinpath(@__DIR__, "../../domains/doors-keys-gems/problem-$(prob_id).pddl")
+domain_path = joinpath(@__DIR__, "domain.pddl")
+problem_path = joinpath(@__DIR__, "problems/problem-$(prob_id).pddl")
 
 domain = load_domain(domain_path)
 problem = load_problem(problem_path)
@@ -37,7 +37,7 @@ problem = load_problem(problem_path)
 state = initstate(domain, problem)
 spec = Specification(problem)
 
-domain, state = PDDL.compiled(domain, state)
+#domain, state = PDDL.compiled(domain, state)
 
 #--- Renderer ---#
 gem_colors = PDDLViz.colorschemes[:vibrant]

@@ -37,6 +37,74 @@ All scripts must be run from the **repository root**.
 
 ---
 
+## Experiment Selection & Format Conversion (Doors-Keys-Gems)
+
+### Why only 8 of 16 experiments?
+
+The original human experiment data covers 16 trials across 12 distinct map
+problems (problems 1–12). However, the `master` branch of this codebase uses a
+**new PDDL format** (bit-matrix walls, door objects) that is only compatible with
+PDDL.jl ≥ 0.2.x. New-format problem files exist in `examples/doors-keys-gems/problems/`
+only for problems 4–7. The remaining problems (8–12) do not have new-format
+counterparts, so their experiments cannot be run with the current codebase.
+
+**8 experiments kept** (problems 4–7, new-format problem files available):
+
+| Experiment | Problem | True Goal |
+|------------|---------|-----------|
+| `1_1` | 6 | gem2 |
+| `1_2` | 7 | gem1 |
+| `1_3` | 4 | gem1 |
+| `2_2` | 5 | gem1 |
+| `3_1` | 6 | gem1 |
+| `3_2` | 4 | gem2 |
+| `4_1` | 7 | gem2 |
+| `4_2` | 5 | gem3 |
+
+**8 experiments dropped** (problems 8–12, no new-format problem files):
+`1_4`, `2_1`, `2_3`, `2_4`, `3_3`, `3_4`, `4_3`, `4_4`
+
+### What was converted and why?
+
+The original human plan files in `domains/doors-keys-gems/plans/` were recorded
+against the **old PDDL format** (from the `project-blocks` branch), which differs
+from the `master` format in two ways:
+
+**1. Coordinate system:**
+- Old format: `y=1` is the bottom row, `y` increases upward
+- New format: `y=1` is the top row, `y` increases downward
+- Transform: `new_y = height + 1 - old_y` (height = 9 for all maps)
+- `x` is unchanged
+
+**2. Unlock action syntax:**
+- Old format: `(unlock key direction)` — e.g., `(unlock key2 left)`
+  meaning "unlock the door one step to the left of the agent"
+- New format: `(unlock key doorN)` — e.g., `(unlock key2 door2)`
+  meaning "unlock door2 (a named object)"
+
+To convert, each `(unlock key dir)` action was traced through the trajectory
+to determine which physical door the agent was adjacent to, and that door was
+mapped to its name in the new problem file (`door1`, `door2`, etc.).
+
+Converted plan files are stored in `examples/doors-keys-gems/plans/`.
+Movement actions (`(up)`, `(down)`, etc.) and `(pickup ...)` actions are
+identical between formats and required no changes.
+
+**3. Gem naming in problem files:**
+
+When the new-format problem files were originally created, gems were assigned
+names in a different order than the old format for problems 4 and 6. Since the
+plan files reference gems by name (e.g., `(pickup gem1)`), the gem coordinates
+in the new problem files were corrected to match the old naming convention:
+
+- `examples/doors-keys-gems/problems/problem-4.pddl`: gem2 and gem3 positions swapped
+- `examples/doors-keys-gems/problems/problem-6.pddl`: gem1 and gem3 positions swapped
+
+This does not affect experimental validity — only internal labels were changed,
+not physical positions, trajectories, or human judgment data.
+
+---
+
 ## Experiment IDs
 
 Both domains have 16 experiments named `<category>_<variant>`:
