@@ -44,6 +44,16 @@ function SymbolicPlanners.solve(
     return AbstractPlanner.solve(hp.inner, domain, state, spec)
 end
 
+Base.copy(hp::HierarchicalPlanner) = HierarchicalPlanner(copy(hp.inner))
+
+function Base.getproperty(hp::HierarchicalPlanner, f::Symbol)
+    f === :inner ? getfield(hp, :inner) : getproperty(hp.inner, f)
+end
+
+function Base.setproperty!(hp::HierarchicalPlanner, f::Symbol, v)
+    setproperty!(hp.inner, f, v)
+end
+
 println("Saving outputs to: ", @__DIR__)
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -55,7 +65,7 @@ exp_id = get(ARGS, 1, "1_1")
 
 # Locate the pre-recorded human plan file for this experiment ID.
 # Files are named like: "1_1_problem_6_goal1_0.dat"
-plans_dir = joinpath(@__DIR__, "../../domains/doors-keys-gems/plans")
+plans_dir = joinpath(@__DIR__, "plans")
 plan_files = readdir(plans_dir)
 matched_files = filter(f -> startswith(f, "$(exp_id)_"), plan_files)
 if isempty(matched_files)
@@ -76,8 +86,8 @@ println("Loading problem-$(prob_id).pddl ...")
 
 PDDL.Arrays.register!()
 
-domain_path  = joinpath(@__DIR__, "../../domains/doors-keys-gems/domain.pddl")
-problem_path = joinpath(@__DIR__, "../../domains/doors-keys-gems/problem-$(prob_id).pddl")
+domain_path  = joinpath(@__DIR__, "domain.pddl")
+problem_path = joinpath(@__DIR__, "problems/problem-$(prob_id).pddl")
 
 domain  = load_domain(domain_path)
 problem = load_problem(problem_path)
