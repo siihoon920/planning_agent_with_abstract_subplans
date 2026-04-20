@@ -13,7 +13,7 @@
 (pickup key3)
 (down)
 (down)
-(unlock key3 left)
+(unlock key3 door2)
 (left)
 (left)
 (left)

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(julia --project examples/doors-keys-gems/human_example_abstract.jl 1_1)",
+      "Bash(julia --project examples/doors-keys-gems/human_example.jl 1_1)",
+      "Bash(git -C /Users/sihoonoh/Downloads/julia_test/planning_agent_with_abstract_subplans diff HEAD examples/doors-keys-gems/human_example_abstract.jl)",
+      "Bash(grep -v \"Polynomials\\\\|MakieCore\\\\|Requires\\\\|Stacktrace\\\\| @ \\\\| [0-9]\\\\{1,3\\\\}\\\\]\")",
+      "Bash(julia --project=. examples/doors-keys-gems/human_example_abstract.jl 1_1)",
+      "Bash(julia --project=. -e ':*)",
+      "Bash(grep -l \"left\\\\|right\\\\|up\\\\|down\" /Users/sihoonoh/Downloads/julia_test/planning_agent_with_abstract_subplans/domains/doors-keys-gems/plans/*.dat)",
+      "Bash(julia:*)",
+      "Bash(kill -0 32717)",
+      "Bash(kill -0 33937)",
+      "Bash(jobs -l)"
+    ]
+  }
+}

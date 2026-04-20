@@ -297,19 +297,25 @@ end
 "Adds a subplot to a storyboard with a line plot of goal probabilities."
 function storyboard_goal_lines!(
     storyboard::Figure, goal_probs, ts=Int[];
+    xs = nothing,   # custom x-axis values for the data series (default: 1:T)
     goal_names = ["(has gem1)", "(has gem2)", "(has gem3)"],
     goal_colors = PDDLViz.colorschemes[:vibrant][1:length(goal_names)],
     show_legend = false
 )
     n_rows, n_cols = size(storyboard.layout)
-    width, height = size(storyboard.scene)
-    # Add goal probability subplot
-    ax, _ = series(
-        storyboard[n_rows+1, 1:n_cols], goal_probs,
-        color = goal_colors, labels=goal_names,
-        axis = (xlabel="Time", ylabel = "Probability",
-                limits=((1, size(goal_probs, 2)), (0, 1)))
-    )
+    T = size(goal_probs, 2)
+    x_data = isnothing(xs) ? collect(1:T) : collect(xs)
+    x_lim  = (Float32(minimum(x_data)), Float32(maximum(x_data)))
+    # Add goal probability subplot — use explicit lines! per goal so that
+    # color[i] is guaranteed to correspond to goal i (the series recipe can
+    # mis-assign colors in some Makie versions).
+    ax = Axis(storyboard[n_rows+1, 1:n_cols],
+              xlabel="Time", ylabel="Probability",
+              limits=(x_lim, (0f0, 1f0)))
+    for i in 1:size(goal_probs, 1)
+        lines!(ax, x_data, goal_probs[i, :];
+               color=goal_colors[i], label=goal_names[i])
+    end
     # Add legend to subplot
     if show_legend
         axislegend(ax, ax, "Goals", framevisible=false)
@@ -323,6 +329,5 @@ function storyboard_goal_lines!(
     end
     # Resize figure to fit new plot
     rowsize!(storyboard.layout, n_rows+1, Auto(0.25))
-    # resize!(storyboard, (width, height * 1.3))
     return storyboard
 end

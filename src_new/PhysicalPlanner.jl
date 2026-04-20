@@ -31,24 +31,39 @@ mutable struct MultiplePathsSearchSolution{
 end
 
 "define abstract actions as subgoals"
-function abstract_actions(domain::PDDL.Domain, state::PDDL.State)
+function abstract_actions(domain::PDDL.Domain, state::PDDL.State,
+                          spec::SymbolicPlanners.Specification)
     ground = PDDL.ground(domain, state)
     actions = ground.actions
-    filtered_actions = filter(action -> action.first in (:pickup, :unlock), actions)
 
     goals = SymbolicPlanners.ActionGoal[]
-    for group in values(filtered_actions)
+    for group in values(actions)
         for act in values(group.actions)
-            push!(goals, SymbolicPlanners.ActionGoal(act.term))
+            name = act.term.name
+            if name == :unlock
+                push!(goals, SymbolicPlanners.ActionGoal(act.term))
+            elseif name == :pickup
+                obj = string(act.term.args[1].name)
+                if startswith(obj, "key")
+                    push!(goals, SymbolicPlanners.ActionGoal(act.term))
+                elseif startswith(obj, "gem")
+                    # Only include pickup of the target gem
+                    next_state = PDDL.transition(domain, state, act.term; check=false)
+                    if SymbolicPlanners.is_goal(spec, domain, next_state)
+                        push!(goals, SymbolicPlanners.ActionGoal(act.term))
+                    end
+                end
+            end
         end
     end
 
     return goals
 end
 
-function solve(domain::PDDL.Domain, state::PDDL.State)
+function solve(domain::PDDL.Domain, state::PDDL.State,
+               spec::SymbolicPlanners.Specification)
     sol = init_sol(domain, state)
-    sol = search!(sol, domain, abstract_actions(domain, state))
+    sol = search!(sol, domain, abstract_actions(domain, state, spec))
     return sol
 end
 
@@ -116,7 +131,7 @@ function search!(
         else
             parent_action = isnothing(node.parent) ? nothing : node.parent.action
             for spec in specs # for each subgoal
-                if SymbolicPlanners.is_goal(spec, domain, node.state, node.parent.action) 
+                if SymbolicPlanners.is_goal(spec, domain, node.state, parent_action) 
                     sol.status = :deadend # set status to deadend if a subgoal is reached
                     push!(reached_goals, node_id) # save the id of the state in array reached_goals
                 end
@@ -150,18 +165,18 @@ function search!(
         end
     end
     
-    if !isempty(reached_goals)
-        for gid in reached_goals
-            node = search_tree[gid]
-            st = node.state
-            println("Goal node $gid (cost=$(node.path_cost))")
-            println("  objects: ", PDDL.get_objtypes(st))
-            println("  facts: ", collect(PDDL.get_facts(st)))
-            println("  fluents: ", join(
-                [string(k, "=", v) for (k, v) in PDDL.get_fluents(st) if k != :walls], ", "
-            ))
-        end
-    end
+    # if !isempty(reached_goals)
+    #     for gid in reached_goals
+    #         node = search_tree[gid]
+    #         st = node.state
+    #         println("Goal node $gid (cost=$(node.path_cost))")
+    #         println("  objects: ", PDDL.get_objtypes(st))
+    #         println("  facts: ", collect(PDDL.get_facts(st)))
+    #         println("  fluents: ", join(
+    #             [string(k, "=", v) for (k, v) in PDDL.get_fluents(st) if k != :walls], ", "
+    #         ))
+    #     end
+    # end
     return sol
 end
 
