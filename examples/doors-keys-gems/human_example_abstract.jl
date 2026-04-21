@@ -56,7 +56,7 @@ n_samples = 120
 
 # Accept experiment IDs from command line, or run all 8 by default
 exp_ids = length(ARGS) > 0 ? collect(ARGS) :
-    ["2_1"]
+    ["4_1"]
     #["2_1", "2_2", "2_3", "2_4"]
     #["1_1", "1_2", "1_3", "1_4", #
 
@@ -65,6 +65,7 @@ exp_ids = length(ARGS) > 0 ? collect(ARGS) :
 # ──────────────────────────────────────────────────────────────────────────────
 
 for exp_id in exp_ids
+    AbstractPlanners.PhysicalPlanner.clear_physical_cache!()
     println("\n" * "="^60)
     println("Running experiment: $exp_id")
     println("="^60)
@@ -136,7 +137,7 @@ for exp_id in exp_ids
     )
 
     # ── Run 1: Standard SIPS (ProbAStarPlanner) ───────────────────────────────
-#=
+
     sips_planner = ProbAStarPlanner(RelaxedMazeDist(), search_noise=0.1)
 
     sips_agent_config = AgentConfig(
@@ -217,11 +218,11 @@ for exp_id in exp_ids
         end
     end
     println("Saved SIPS model goal probabilities → $sips_csv_path")
-=#
+
     # ── Run 2: Abstract Planner SIPS ──────────────────────────────────────────
 
     abs_planner = AbstractPlanners.AbstractPlanner(
-        RelaxedMazeDist(); search_noise=0.5, save_search=true
+        RelaxedMazeDist(); search_noise=0.1, save_search=true
     )
 
     abs_agent_config = AgentConfig(
@@ -229,7 +230,7 @@ for exp_id in exp_ids
         abs_planner;
         goal_config = StaticGoalConfig(goal_prior),
         replan_args = (
-            prob_replan      = 0.4,
+            prob_replan      = 0.1,
             budget_dist      = shifted_neg_binom,
             budget_dist_args = (2, 0.1, 1)
         ),
@@ -252,7 +253,7 @@ for exp_id in exp_ids
         abs_world_config,
         resample_cond  = :ess,
         rejuv_cond     = :periodic,
-        rejuv_kernel   =  SequentialKernel(InitGoalKernel(),ReplanKernel(2)),
+        rejuv_kernel   = SequentialKernel(InitGoalKernel(), ReplanKernel(2)),
         period         = 2
     )
 
@@ -305,8 +306,20 @@ for exp_id in exp_ids
     save(human_storyboard_path, human_storyboard)
     println("Saved human storyboard → $human_storyboard_path")
 
-    # 2. SIPS storyboard (skipped — SIPS run commented out)
-    sips_storyboard_path = "(skipped)"
+    # 2. SIPS storyboard
+    sips_storyboard = render_storyboard(
+        anim_traj, frame_idxs;
+        subtitles = ["t = $(t-1)" for t in frame_idxs],
+        xlabels   = ["t = $(t-1)" for t in frame_idxs],
+        xlabelsize = 20, subtitlesize = 24
+    )
+    storyboard_goal_lines!(
+        sips_storyboard, sips_goal_probs, model_ts;
+        xs = model_xs, goal_names = goal_names, goal_colors = goal_colors, show_legend = true
+    )
+    sips_storyboard_path = joinpath(@__DIR__, "solutions/inference_sips/storyboard_sips_$(exp_id).png")
+    save(sips_storyboard_path, sips_storyboard)
+    println("Saved SIPS storyboard → $sips_storyboard_path")
 
     # 3. Hierarchical storyboard
     storyboard_goal_lines!(

@@ -347,7 +347,7 @@ function expand!(
     g_mult, h_mult = planner.g_mult, planner.h_mult
     state = node.state
     # from abstract state, call physical planner to get candidate next states
-    subgoal = PhysicalPlanner.solve(domain, state, spec)
+    subgoal = PhysicalPlanner.solve(domain, state)
 
     for i in 1:length(subgoal.path_costs)
         subgoal_state = subgoal.trajectories[i][end]

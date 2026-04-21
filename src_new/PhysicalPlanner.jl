@@ -31,39 +31,33 @@ mutable struct MultiplePathsSearchSolution{
 end
 
 "define abstract actions as subgoals"
-function abstract_actions(domain::PDDL.Domain, state::PDDL.State,
-                          spec::SymbolicPlanners.Specification)
+function abstract_actions(domain::PDDL.Domain, state::PDDL.State)
     ground = PDDL.ground(domain, state)
     actions = ground.actions
-
+    filtered_actions = filter(action -> action.first in (:pickup, :unlock), actions)
     goals = SymbolicPlanners.ActionGoal[]
-    for group in values(actions)
+    for group in values(filtered_actions)
         for act in values(group.actions)
-            name = act.term.name
-            if name == :unlock
-                push!(goals, SymbolicPlanners.ActionGoal(act.term))
-            elseif name == :pickup
-                obj = string(act.term.args[1].name)
-                if startswith(obj, "key")
-                    push!(goals, SymbolicPlanners.ActionGoal(act.term))
-                elseif startswith(obj, "gem")
-                    # Only include pickup of the target gem
-                    next_state = PDDL.transition(domain, state, act.term; check=false)
-                    if SymbolicPlanners.is_goal(spec, domain, next_state)
-                        push!(goals, SymbolicPlanners.ActionGoal(act.term))
-                    end
-                end
-            end
+            push!(goals, SymbolicPlanners.ActionGoal(act.term))
         end
     end
-
     return goals
 end
 
-function solve(domain::PDDL.Domain, state::PDDL.State,
-               spec::SymbolicPlanners.Specification)
+const PHYSICAL_CACHE = Dict{UInt, MultiplePathsSearchSolution}()
+
+function clear_physical_cache!()
+    empty!(PHYSICAL_CACHE)
+end
+
+function solve(domain::PDDL.Domain, state::PDDL.State)
+    cache_key = hash(state)
+    cached = get(PHYSICAL_CACHE, cache_key, nothing)
+    !isnothing(cached) && return cached
+    specs_vec = abstract_actions(domain, state)
     sol = init_sol(domain, state)
-    sol = search!(sol, domain, abstract_actions(domain, state, spec))
+    sol = search!(sol, domain, specs_vec)
+    PHYSICAL_CACHE[cache_key] = sol
     return sol
 end
 
