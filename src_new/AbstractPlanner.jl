@@ -20,7 +20,7 @@ const simplify_goal    = SymbolicPlanners.simplify_goal
 const prob_peek        = SymbolicPlanners.prob_peek
 const prob_dequeue!    = SymbolicPlanners.prob_dequeue!
 
-include("../examples/doors-keys-gems/utils.jl")
+include("../example/doors-keys-gems/utils.jl")
 include("PhysicalPlanner.jl")
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 (up)
 (left)
 (pickup key1)
-(unlock key1 left)
+(unlock key1 door2)
 (left)
 (left)
 (up)
