@@ -4,8 +4,7 @@ compute_pcc.jl  –  Pearson Correlation Coefficient evaluation for
 
 Human data loading mirrors main_with_hierarchical.jl exactly.
 Model predictions are sampled at the specific action timesteps recorded in
-domains/doors-keys-gems/stimuli/stimuli.json (the subfolder version),
-rather than at evenly-spaced intervals.
+domains/doors-keys-gems/stimuli/stimuli.json.
 
 Run from the repository root:
     julia --project=. evaluation/compute_pcc.jl
@@ -34,39 +33,31 @@ const SUBOPTIMAL_PROBLEMS = Set([3, 4])
 
 # ─────────────────────────────────────────────────────────────
 # Lightweight stimuli.json parser (no external deps)
-#
-# Extracts exp_id → Vector{Int} of action timesteps from the
-# domains/doors-keys-gems/stimuli/stimuli.json file.
 # ─────────────────────────────────────────────────────────────
 
 function load_stimuli_times(path::String)
     times_map = Dict{String, Vector{Int}}()
     text = read(path, String)
-
-    # Split into per-object blocks (objects are flat – no nested {})
     for obj in eachmatch(r"\{[^{}]+\}"s, text)
         obj_text = obj.match
-
         name_m  = match(r"\"name\"\s*:\s*\"scenario_(\d+_\d+)\"", obj_text)
         times_m = match(r"\"times\"\s*:\s*\[([0-9,\s]+)\]",       obj_text)
         (name_m === nothing || times_m === nothing) && continue
-
         exp_id = name_m.captures[1]
         times  = parse.(Int, strip.(split(times_m.captures[1], ",")))
         times_map[exp_id] = times
     end
-
     return times_map
 end
 
 # ─────────────────────────────────────────────────────────────
-# Loaders  (human loading matches main_with_hierarchical.jl)
+# Loaders
 # ─────────────────────────────────────────────────────────────
 
 """
-Load model CSV (SIPS or Abstract).
-Row 1 is a text header; remaining rows are T × n_goals floats.
-Returns (n_goals × T) matrix where column t = prediction at action step t.
+Load a model CSV (SIPS or Abstract).
+Row 1 is a text header; rows 2..end are one row per action step.
+Returns (n_goals × T_model): column t = model prediction at action step t.
 """
 function load_model(path::String)
     raw  = readdlm(path, ',', String)
@@ -75,20 +66,38 @@ function load_model(path::String)
 end
 
 """
-Load human CSV – identical to main_with_hierarchical.jl:
-    human_data_1d    = vec(readdlm(..., Float64))
-    n_time_steps     = div(length(human_data_1d), n_goals)
-    human_goal_probs = reshape(human_data_1d, n_goals, n_time_steps)
+Load human CSV for a specific experiment.
 
-Julia's reshape is column-major, so the flat file stores values as
-[goal1_t1, goal2_t1, goal3_t1, goal1_t2, ...].
-Returns (n_goals × n_time_steps) matrix.
+The human CSV stores data ONLY for the timesteps listed in stimuli.json.
+Layout (column-major, matching Julia's reshape default):
+    row 1 : gem1 at times[1]
+    row 2 : gem2 at times[1]
+    row 3 : gem3 at times[1]
+    row 4 : gem1 at times[2]
+    ...
+
+n_times is taken from stimuli.json for this experiment.
+
+For 9/16 experiments the file has exactly n_times*3 rows.
+For the remaining 7 the file has extra rows (additional undocumented survey
+points appended at the end). We always take only the first n_times*3 rows so
+that column i of the returned matrix corresponds to times[i].
+
+Returns (n_goals × n_times) matrix.
 """
-function load_human(path::String, n_goals::Int = N_GOALS)
-    human_data_1d    = vec(readdlm(path, ',', Float64))
-    n_time_steps     = div(length(human_data_1d), n_goals)
-    human_goal_probs = reshape(human_data_1d, n_goals, n_time_steps)
-    return human_goal_probs
+function load_human(path::String, n_times::Int, n_goals::Int = N_GOALS)
+    human_data_1d = vec(readdlm(path, ',', Float64))
+    n_available   = div(length(human_data_1d), n_goals)
+
+    if n_available < n_times
+        @warn "Human CSV has $n_available timesteps but stimuli.json lists $n_times; using $n_available"
+        n_times = n_available
+    end
+    # Extra rows (n_available > n_times) are silently dropped — they are
+    # undocumented survey points not listed in stimuli.json.
+
+    trimmed = human_data_1d[1 : n_times * n_goals]
+    return reshape(trimmed, n_goals, n_times)   # (n_goals × n_times)
 end
 
 # ─────────────────────────────────────────────────────────────
@@ -105,36 +114,34 @@ function pearson_r(x::AbstractVector, y::AbstractVector)
 end
 
 """
-Compute PCC between model and human by sampling the model at the specific
-action timesteps listed in stimuli.json, then comparing to human data.
+Compute PCC by comparing:
+    model[:, times[i]]  vs  human[:, i]   for i = 1 .. n_times
 
-model  : (n_goals × T_model) — model output at every action step
-human  : (n_goals × n_human) — human judgment at each survey point
-times  : 1-indexed action steps at which human judgments were collected
+human is already shaped (n_goals × n_times) by load_human, so columns
+align 1:1 with the times array.
 
-When len(times) ≠ n_human (stimuli.json version mismatch), we take
-min(len(times), n_human) and emit a warning.
+Any times[i] that exceed the model's output length are dropped (with a
+warning), and the corresponding human columns are dropped too.
 """
 function pcc_at_times(model::Matrix, human::Matrix, times::Vector{Int}, exp_id::String)
-    n_human = size(human, 2)
-    n_times = length(times)
+    n_times = size(human, 2)   # == length(times) after load_human trimming
 
-    if n_times != n_human
-        @warn "[$exp_id] stimuli times ($n_times) ≠ human timesteps ($n_human); using min"
+    # Identify valid times (within model's output range)
+    valid_mask  = [1 <= t <= size(model, 2) for t in times[1:n_times]]
+    n_dropped   = count(!, valid_mask)
+    if n_dropped > 0
+        @warn "[$exp_id] $n_dropped time(s) exceed model length ($(size(model,2))), dropped"
     end
 
-    # Drop times that exceed the model's output length
-    valid = filter(t -> 1 <= t <= size(model, 2), times)
-    if length(valid) < n_times
-        @warn "[$exp_id] $(n_times - length(valid)) time(s) exceed model length ($(size(model,2))), dropped"
-    end
+    valid_times  = times[1:n_times][valid_mask]
+    valid_cols   = (1:n_times)[valid_mask]
 
-    n = min(length(valid), n_human)
-    n < 2 && return NaN
+    length(valid_times) < 2 && return NaN
 
-    model_subset = model[:, valid[1:n]]
-    human_subset = human[:, 1:n]
+    model_subset = model[:, valid_times]      # (n_goals × n_valid)
+    human_subset = human[:, valid_cols]       # (n_goals × n_valid)
 
+    # Flatten: [gem1_t1, gem2_t1, gem3_t1, gem1_t2, ...]
     return pearson_r(vec(model_subset), vec(human_subset))
 end
 
@@ -164,19 +171,18 @@ function evaluate_all()
             @warn "[$exp_id] Human data missing, skipping."
             continue
         end
-
         if !haskey(stimuli_times, exp_id)
             @warn "[$exp_id] Not found in stimuli.json, skipping."
             continue
         end
 
-        human_mat = load_human(human_path)
         times     = stimuli_times[exp_id]
+        human_mat = load_human(human_path, length(times))
 
         sips_r = if isfile(sips_path)
             pcc_at_times(load_model(sips_path), human_mat, times, exp_id)
         else
-            @warn "[$exp_id] SIPS data missing."
+            @warn "[$exp_id] SIPS model data missing."
             NaN
         end
 

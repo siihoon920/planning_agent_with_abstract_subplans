@@ -1,20 +1,26 @@
 """
 scatter_plot.jl  –  Scatter plot: model predictions (x) vs human inference (y).
 
-Uses PyPlot (matplotlib) instead of GLMakie — no GPU/OpenGL required.
+Uses PyPlot (matplotlib) — no GPU/OpenGL required.
+
+Each dot is one (gem, survey-timestep, experiment) triple:
+    x = model's predicted probability for that gem at that action step
+    y = human's inferred probability for that gem at that survey point
+
+Only the timesteps listed in stimuli/stimuli.json are used.
+Total dots per model = sum over 16 experiments of len(times_i) * 3.
 
 Run from the repository root:
     julia --project=. evaluation/scatter_plot.jl
 
 Output: evaluation/scatter_plot.png
+See evaluation/doc.md for full usage notes.
 """
 
 using PyCall
 pyimport("matplotlib").use("Agg")
-
 using PyPlot
-
-using DelimitedFiles, Statistics, Printf, PyPlot
+using DelimitedFiles, Statistics, Printf
 
 # ─────────────────────────────────────────────────────────────
 # Paths
@@ -31,7 +37,7 @@ const PROBLEMS = 1:4
 const SETS     = 1:4
 
 # ─────────────────────────────────────────────────────────────
-# Helpers (unchanged from original)
+# Helpers  (identical logic to compute_pcc.jl)
 # ─────────────────────────────────────────────────────────────
 
 function load_stimuli_times(path::String)
@@ -55,11 +61,17 @@ function load_model(path::String)
     return collect(transpose(data))   # (n_goals × T)
 end
 
-function load_human(path::String, n_goals::Int = N_GOALS)
-    human_data_1d    = vec(readdlm(path, ',', Float64))
-    n_time_steps     = div(length(human_data_1d), n_goals)
-    human_goal_probs = reshape(human_data_1d, n_goals, n_time_steps)
-    return human_goal_probs
+"""
+Load human CSV trimmed to exactly n_times survey points.
+Extra rows beyond n_times*3 are dropped (undocumented survey points).
+Returns (n_goals × n_times).
+"""
+function load_human(path::String, n_times::Int, n_goals::Int = N_GOALS)
+    human_data_1d = vec(readdlm(path, ',', Float64))
+    n_available   = div(length(human_data_1d), n_goals)
+    n_use         = min(n_times, n_available)
+    trimmed       = human_data_1d[1 : n_use * n_goals]
+    return reshape(trimmed, n_goals, n_use)   # (n_goals × n_use)
 end
 
 function pearson_r(x::AbstractVector, y::AbstractVector)
@@ -71,15 +83,29 @@ function pearson_r(x::AbstractVector, y::AbstractVector)
     return num / den
 end
 
-function extract_pairs(model::Matrix, human::Matrix, times::Vector{Int})
-    n_human = size(human, 2)
-    valid   = filter(t -> 1 <= t <= size(model, 2), times)
-    n       = min(length(valid), n_human)
-    n < 1   && return Float64[], Float64[]
+"""
+Extract (model_vals, human_vals) pairs for the scatter plot.
 
-    model_subset = model[:, valid[1:n]]
-    human_subset = human[:, 1:n]
+For each documented survey point i (1..n_times):
+    model_vals[3*(i-1)+1 : 3*i] = model[:, times[i]]   (3 gem probabilities)
+    human_vals[3*(i-1)+1 : 3*i] = human[:, i]          (3 gem probabilities)
 
+Returns two flat vectors, each of length n_valid * n_goals.
+"""
+function extract_scatter_pairs(model::Matrix, human::Matrix, times::Vector{Int})
+    n_times = size(human, 2)
+
+    # Keep only times within the model's output range
+    valid_mask  = [1 <= t <= size(model, 2) for t in times[1:n_times]]
+    valid_times = times[1:n_times][valid_mask]
+    valid_cols  = (1:n_times)[valid_mask]
+
+    isempty(valid_times) && return Float64[], Float64[]
+
+    model_subset = model[:, valid_times]   # (n_goals × n_valid)
+    human_subset = human[:, valid_cols]    # (n_goals × n_valid)
+
+    # vec() flattens column-major: all gems at t1, then all gems at t2, ...
     return vec(model_subset), vec(human_subset)
 end
 
@@ -91,6 +117,7 @@ stimuli_times = load_stimuli_times(STIMULI_PATH)
 
 sips_x = Float64[];  sips_y = Float64[]
 abs_x  = Float64[];  abs_y  = Float64[]
+total_points = 0
 
 for problem in PROBLEMS, s in SETS
     exp_id     = "$(problem)_$(s)"
@@ -100,19 +127,22 @@ for problem in PROBLEMS, s in SETS
 
     (!isfile(human_path) || !haskey(stimuli_times, exp_id)) && continue
 
-    human_mat = load_human(human_path)
     times     = stimuli_times[exp_id]
+    human_mat = load_human(human_path, length(times))
+    global total_points += size(human_mat, 2) * N_GOALS
 
     if isfile(sips_path)
-        mx, hx = extract_pairs(load_model(sips_path), human_mat, times)
+        mx, hx = extract_scatter_pairs(load_model(sips_path), human_mat, times)
         append!(sips_x, mx);  append!(sips_y, hx)
     end
 
     if isfile(abs_path)
-        mx, hx = extract_pairs(load_model(abs_path), human_mat, times)
+        mx, hx = extract_scatter_pairs(load_model(abs_path), human_mat, times)
         append!(abs_x, mx);  append!(abs_y, hx)
     end
 end
+
+@printf "Total scatter points per model: %d  (= Σ len(times_i) × 3 over 16 experiments)\n" total_points
 
 # ─────────────────────────────────────────────────────────────
 # Pearson r for legend labels
@@ -125,19 +155,19 @@ abs_r  = pearson_r(abs_x,  abs_y)
 @printf "Abstract PCC (all data): %.4f\n" abs_r
 
 # ─────────────────────────────────────────────────────────────
-# Plot with PyPlot (matplotlib)
+# Scatter plot
 # ─────────────────────────────────────────────────────────────
 
 fig, ax = plt.subplots(figsize=(6.5, 6.0))
 
-ax.scatter(sips_x, sips_y;
+ax.scatter(sips_x, sips_y,
     color  = "steelblue",
     alpha  = 0.35,
     s      = 20,
     label  = @sprintf("SIPS  (r = %.3f)", sips_r),
     zorder = 2,
 )
-ax.scatter(abs_x, abs_y;
+ax.scatter(abs_x, abs_y,
     color  = "tomato",
     alpha  = 0.35,
     s      = 20,
@@ -146,7 +176,7 @@ ax.scatter(abs_x, abs_y;
 )
 
 # Identity line y = x
-ax.plot([0.0, 1.0], [0.0, 1.0];
+ax.plot([0.0, 1.0], [0.0, 1.0],
     color     = "black",
     alpha     = 0.5,
     linewidth = 1.0,
@@ -158,9 +188,9 @@ ax.plot([0.0, 1.0], [0.0, 1.0];
 ax.set_xlim(-0.05, 1.05)
 ax.set_ylim(-0.05, 1.05)
 ax.set_aspect("equal")
-ax.set_xlabel("Model predicted probability")
-ax.set_ylabel("Human inferred probability")
-ax.set_title("Model predictions vs Human goal inference\n(doors-keys-gems, all experiments)")
+ax.set_xlabel("Model predicted probability", fontsize=12)
+ax.set_ylabel("Human inferred probability",  fontsize=12)
+ax.set_title("Model predictions vs Human goal inference\n(doors-keys-gems, all experiments)", fontsize=12)
 ax.legend(loc="upper left", frameon=true)
 
 out_path = joinpath(@__DIR__, "scatter_plot.png")
