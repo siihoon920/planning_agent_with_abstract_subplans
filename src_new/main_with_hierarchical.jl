@@ -52,7 +52,8 @@ end
 n_samples = 120
 
 # Accept experiment IDs from command line, or run all 8 by default
-exp_ids = length(ARGS) > 0 ? collect(ARGS) :
+exp_ids = length(ARGS) > 0 ?
+collect(ARGS) :
     ["1_1", "1_2", "1_3", "1_4","2_1", "2_2", "2_3", "2_4","3_1", "3_2", "3_3", "3_4","4_1", "4_2", "4_3", "4_4"]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -77,7 +78,8 @@ for exp_id in exp_ids
     println("Using plan file: $plan_file")
 
     m = match(r"problem_(\d+)_", plan_file)
-    prob_id = m === nothing ? error("Cannot parse problem ID from $plan_file") : m.captures[1]
+    prob_id = m === nothing ?
+        error("Cannot parse problem ID from $plan_file") : m.captures[1]
     println("Loading problem-$(prob_id).pddl ...")
 
     # ── Domain / State ────────────────────────────────────────────────────────
@@ -130,6 +132,7 @@ for exp_id in exp_ids
         xlabels   = ["t = $(t-1)" for t in frame_idxs],
         xlabelsize = 20, subtitlesize = 24
     )
+    
     # ── Run 1: Standard SIPS (ProbAStarPlanner) ───────────────────────────────
 
     sips_planner = ProbAStarPlanner(RelaxedMazeDist(), search_noise=0.1)
@@ -207,7 +210,8 @@ for exp_id in exp_ids
     sips_csv_path = joinpath(@__DIR__, "../example/doors-keys-gems/goal_probs_SIPS/goal_probs_SIPS_$(exp_id).csv")
     open(sips_csv_path, "w") do io
         println(io, join(goal_names, ","))
-        for t in 1:size(sips_goal_probs, 2)
+        # FIXED: Start at index 2 to skip t=0
+        for t in 2:size(sips_goal_probs, 2)
             println(io, join(sips_goal_probs[:, t], ","))
         end
     end
@@ -216,7 +220,8 @@ for exp_id in exp_ids
     # ── Run 2: Abstract Planner SIPS ──────────────────────────────────────────
 
     abs_planner = AbstractPlanners.AbstractPlanner(
-        RelaxedMazeDist(); search_noise=0.1, save_search=true
+        RelaxedMazeDist();
+        search_noise=0.1, save_search=true
     )
 
     abs_agent_config = AgentConfig(
@@ -264,7 +269,8 @@ for exp_id in exp_ids
     abs_csv_path = joinpath(@__DIR__, "../example/doors-keys-gems/goal_probs_hierarchical/goal_probs_hierarchical_$(exp_id).csv")
     open(abs_csv_path, "w") do io
         println(io, join(goal_names, ","))
-        for t in 1:size(abs_goal_probs, 2)
+        # FIXED: Start at index 2 to skip t=0
+        for t in 2:size(abs_goal_probs, 2)
             println(io, join(abs_goal_probs[:, t], ","))
         end
     end
@@ -280,7 +286,7 @@ for exp_id in exp_ids
     T        = length(plan)
     step     = div(T, n_time_steps + 1)
     human_ts = [step * i for i in 0:n_time_steps-1]       # e.g. [0,5,10,15]
-    model_ts = [step * i for i in 1:div(T, step)]          # e.g. [5,10,15,20,25]
+    model_ts = [step * i for i in 1:div(T, step)]         # e.g. [5,10,15,20,25]
     model_xs = collect(0:T)
 
     # ── Three Storyboards ─────────────────────────────────────────────────────
