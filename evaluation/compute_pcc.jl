@@ -18,11 +18,10 @@ using DelimitedFiles, Statistics, Printf
 # Paths
 # ─────────────────────────────────────────────────────────────
 
-const REPO_ROOT    = dirname(@__DIR__)
-const SIPS_DIR     = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_SIPS")
-const ABS_DIR      = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_hierarchical")
-const HUMAN_DIR    = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "average_human_results_arrays")
-const STIMULI_PATH = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "stimuli", "stimuli.json")
+const REPO_ROOT = dirname(@__DIR__)
+const SIPS_DIR  = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_SIPS")
+const ABS_DIR   = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_hierarchical")
+const HUMAN_DIR = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "average_human_results_arrays")
 
 const N_GOALS  = 3
 const PROBLEMS = 1:4
@@ -31,24 +30,28 @@ const SETS     = 1:4
 const OPTIMAL_PROBLEMS    = Set([1])
 const SUBOPTIMAL_PROBLEMS = Set([3, 4])
 
-# ─────────────────────────────────────────────────────────────
-# Lightweight stimuli.json parser (no external deps)
-# ─────────────────────────────────────────────────────────────
-
-function load_stimuli_times(path::String)
-    times_map = Dict{String, Vector{Int}}()
-    text = read(path, String)
-    for obj in eachmatch(r"\{[^{}]+\}"s, text)
-        obj_text = obj.match
-        name_m  = match(r"\"name\"\s*:\s*\"scenario_(\d+_\d+)\"", obj_text)
-        times_m = match(r"\"times\"\s*:\s*\[([0-9,\s]+)\]",       obj_text)
-        (name_m === nothing || times_m === nothing) && continue
-        exp_id = name_m.captures[1]
-        times  = parse.(Int, strip.(split(times_m.captures[1], ",")))
-        times_map[exp_id] = times
-    end
-    return times_map
-end
+# Survey judgement-point timestamps, ordered: 1_1, 1_2, 1_3, 1_4,
+#                                              2_1, 2_2, 2_3, 2_4,
+#                                              3_1, 3_2, 3_3, 3_4,
+#                                              4_1, 4_2, 4_3, 4_4
+const JUDGEMENT_POINTS = [
+    [1, 7, 17, 23],        # 1_1
+    [1, 9, 14, 17],        # 1_2
+    [1, 9, 17, 24],        # 1_3
+    [1, 7, 14, 23, 32],    # 1_4
+    [1, 6, 11, 24],        # 2_1
+    [1, 4, 6, 11],         # 2_2
+    [1, 5, 8, 13],         # 2_3
+    [1, 9, 12, 31, 44],    # 2_4
+    [1, 7, 22, 37, 50],    # 3_1
+    [1, 14, 24, 29, 40, 54], # 3_2
+    [1, 7, 13, 20, 26],    # 3_3
+    [1, 6, 11, 26, 36, 49], # 3_4
+    [1, 8, 14, 20],        # 4_1
+    [1, 4, 7, 10],         # 4_2
+    [1, 5, 8, 10],         # 4_3
+    [1, 7, 12, 18],        # 4_4
+]
 
 # ─────────────────────────────────────────────────────────────
 # Loaders
@@ -158,7 +161,6 @@ struct Result
 end
 
 function evaluate_all()
-    stimuli_times = load_stimuli_times(STIMULI_PATH)
     results = Result[]
 
     for problem in PROBLEMS, s in SETS
@@ -171,12 +173,8 @@ function evaluate_all()
             @warn "[$exp_id] Human data missing, skipping."
             continue
         end
-        if !haskey(stimuli_times, exp_id)
-            @warn "[$exp_id] Not found in stimuli.json, skipping."
-            continue
-        end
 
-        times     = stimuli_times[exp_id]
+        times     = JUDGEMENT_POINTS[(problem - 1) * length(SETS) + s]
         human_mat = load_human(human_path, length(times))
 
         sips_r = if isfile(sips_path)
@@ -225,6 +223,9 @@ function print_table(results::Vector{Result})
     sips_sub = [r.sips_pcc for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
     abs_sub  = [r.abs_pcc  for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
 
+    sips_no2 = [r.sips_pcc for r in results if r.problem != 2]
+    abs_no2  = [r.abs_pcc  for r in results if r.problem != 2]
+
     println()
     sep2 = "─" ^ 54
     println(sep2)
@@ -233,6 +234,16 @@ function print_table(results::Vector{Result})
     @printf "%-24s  %12.4f  %14.4f\n" "Overall mean"        nanmean(sips_all) nanmean(abs_all)
     @printf "%-24s  %12.4f  %14.4f\n" "Optimal (prob 1)"    nanmean(sips_opt) nanmean(abs_opt)
     @printf "%-24s  %12.4f  %14.4f\n" "Sub-optimal (3 & 4)" nanmean(sips_sub) nanmean(abs_sub)
+    println(sep2)
+
+    println()
+    println("  (excluding problem 2)")
+    println(sep2)
+    @printf "%-24s  %12s  %14s\n" "Category" "SIPS PCC" "Abstract PCC"
+    println(sep2)
+    @printf "%-24s  %12.4f  %14.4f\n" "Overall (excl. prob 2)" nanmean(sips_no2) nanmean(abs_no2)
+    @printf "%-24s  %12.4f  %14.4f\n" "Optimal (prob 1)"       nanmean(sips_opt) nanmean(abs_opt)
+    @printf "%-24s  %12.4f  %14.4f\n" "Sub-optimal (3 & 4)"    nanmean(sips_sub) nanmean(abs_sub)
     println(sep2, "\n")
 end
 
@@ -254,11 +265,14 @@ function save_csv(results::Vector{Result})
         abs_opt  = [r.abs_pcc  for r in results if r.problem in OPTIMAL_PROBLEMS]
         sips_sub = [r.sips_pcc for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
         abs_sub  = [r.abs_pcc  for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
+        sips_no2 = [r.sips_pcc for r in results if r.problem != 2]
+        abs_no2  = [r.abs_pcc  for r in results if r.problem != 2]
 
         println(io, "\ncategory,sips_pcc,abstract_pcc")
-        @printf io "overall,%.6f,%.6f\n"    nanmean(sips_all) nanmean(abs_all)
-        @printf io "optimal,%.6f,%.6f\n"    nanmean(sips_opt) nanmean(abs_opt)
-        @printf io "suboptimal,%.6f,%.6f\n" nanmean(sips_sub) nanmean(abs_sub)
+        @printf io "overall,%.6f,%.6f\n"              nanmean(sips_all) nanmean(abs_all)
+        @printf io "optimal,%.6f,%.6f\n"              nanmean(sips_opt) nanmean(abs_opt)
+        @printf io "suboptimal,%.6f,%.6f\n"           nanmean(sips_sub) nanmean(abs_sub)
+        @printf io "overall_excl_prob2,%.6f,%.6f\n"   nanmean(sips_no2) nanmean(abs_no2)
     end
     println("Saved → $out")
 end

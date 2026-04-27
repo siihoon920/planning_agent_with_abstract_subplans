@@ -7,7 +7,7 @@ Each dot is one (gem, survey-timestep, experiment) triple:
     x = model's predicted probability for that gem at that action step
     y = human's inferred probability for that gem at that survey point
 
-Only the timesteps listed in stimuli/stimuli.json are used.
+Only the judgement-point timesteps (hardcoded in JUDGEMENT_POINTS) are used.
 Total dots per model = sum over 16 experiments of len(times_i) * 3.
 
 Run from the repository root:
@@ -26,34 +26,33 @@ using DelimitedFiles, Statistics, Printf
 # Paths
 # ─────────────────────────────────────────────────────────────
 
-const REPO_ROOT    = dirname(@__DIR__)
-const SIPS_DIR     = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_SIPS")
-const ABS_DIR      = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_hierarchical")
-const HUMAN_DIR    = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "average_human_results_arrays")
-const STIMULI_PATH = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "stimuli", "stimuli.json")
+const REPO_ROOT = dirname(@__DIR__)
+const SIPS_DIR  = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_SIPS")
+const ABS_DIR   = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_hierarchical")
+const HUMAN_DIR = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "average_human_results_arrays")
 
 const N_GOALS  = 3
 const PROBLEMS = 1:4
 const SETS     = 1:4
 
-# ─────────────────────────────────────────────────────────────
-# Helpers  (identical logic to compute_pcc.jl)
-# ─────────────────────────────────────────────────────────────
-
-function load_stimuli_times(path::String)
-    times_map = Dict{String, Vector{Int}}()
-    text = read(path, String)
-    for obj in eachmatch(r"\{[^{}]+\}"s, text)
-        obj_text = obj.match
-        name_m  = match(r"\"name\"\s*:\s*\"scenario_(\d+_\d+)\"", obj_text)
-        times_m = match(r"\"times\"\s*:\s*\[([0-9,\s]+)\]",       obj_text)
-        (name_m === nothing || times_m === nothing) && continue
-        exp_id = name_m.captures[1]
-        times  = parse.(Int, strip.(split(times_m.captures[1], ",")))
-        times_map[exp_id] = times
-    end
-    return times_map
-end
+const JUDGEMENT_POINTS = [
+    [1, 7, 17, 23],          # 1_1
+    [1, 9, 14, 17],          # 1_2
+    [1, 9, 17, 24],          # 1_3
+    [1, 7, 14, 23, 32],      # 1_4
+    [1, 6, 11, 24],          # 2_1
+    [1, 4, 6, 11],           # 2_2
+    [1, 5, 8, 13],           # 2_3
+    [1, 9, 12, 31, 44],      # 2_4
+    [1, 7, 22, 37, 50],      # 3_1
+    [1, 14, 24, 29, 40, 54], # 3_2
+    [1, 7, 13, 20, 26],      # 3_3
+    [1, 6, 11, 26, 36, 49],  # 3_4
+    [1, 8, 14, 20],          # 4_1
+    [1, 4, 7, 10],           # 4_2
+    [1, 5, 8, 10],           # 4_3
+    [1, 7, 12, 18],          # 4_4
+]
 
 function load_model(path::String)
     raw  = readdlm(path, ',', String)
@@ -113,8 +112,6 @@ end
 # Collect scatter data across all 16 experiments
 # ─────────────────────────────────────────────────────────────
 
-stimuli_times = load_stimuli_times(STIMULI_PATH)
-
 sips_x = Float64[];  sips_y = Float64[]
 abs_x  = Float64[];  abs_y  = Float64[]
 total_points = 0
@@ -125,9 +122,9 @@ for problem in PROBLEMS, s in SETS
     sips_path  = joinpath(SIPS_DIR,  "goal_probs_SIPS_$(exp_id).csv")
     abs_path   = joinpath(ABS_DIR,   "goal_probs_hierarchical_$(exp_id).csv")
 
-    (!isfile(human_path) || !haskey(stimuli_times, exp_id)) && continue
+    !isfile(human_path) && continue
 
-    times     = stimuli_times[exp_id]
+    times     = JUDGEMENT_POINTS[(problem - 1) * length(SETS) + s]
     human_mat = load_human(human_path, length(times))
     global total_points += size(human_mat, 2) * N_GOALS
 
@@ -142,7 +139,9 @@ for problem in PROBLEMS, s in SETS
     end
 end
 
-@printf "Total scatter points per model: %d  (= Σ len(times_i) × 3 over 16 experiments)\n" total_points
+@printf "Total human survey points:      %d  (= Σ len(times_i) × 3 over 16 experiments)\n" total_points
+@printf "SIPS scatter dots:              %d\n" length(sips_x)
+@printf "Abstract scatter dots:          %d\n" length(abs_x)
 
 # ─────────────────────────────────────────────────────────────
 # Pearson r for legend labels
