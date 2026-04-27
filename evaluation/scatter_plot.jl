@@ -32,7 +32,7 @@ const ABS_DIR   = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_
 const HUMAN_DIR = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "average_human_results_arrays")
 
 const N_GOALS  = 3
-const PROBLEMS = 1:4
+const PROBLEMS = 1,3,4
 const SETS     = 1:4
 
 const JUDGEMENT_POINTS = [
