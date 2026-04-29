@@ -51,10 +51,30 @@ end
 
 n_samples = 200
 
-# Accept experiment IDs from command line, or run all 8 by default
+const JUDGEMENT_POINTS = [
+    [7, 17, 23],             # 1_1
+    [9, 14, 17],             # 1_2
+    [9, 17, 24],             # 1_3
+    [7, 14, 23, 32],         # 1_4
+    [6, 11, 24],             # 2_1
+    [4, 6, 11],              # 2_2
+    [5, 8, 13],              # 2_3
+    [9, 12, 31, 44],         # 2_4
+    [7, 22, 37, 50],         # 3_1
+    [14, 24, 29, 40, 54],    # 3_2
+    [7, 13, 20, 26],         # 3_3
+    [6, 11, 26, 36, 49],     # 3_4
+    [8, 14, 20],             # 4_1
+    [4, 7, 10],              # 4_2
+    [5, 8, 10],              # 4_3
+    [7, 12, 18],             # 4_4
+]
+
+# Accept experiment IDs from command line, or run all 16 by default
 exp_ids = length(ARGS) > 0 ?
 collect(ARGS) :
-    ["1_1", "1_2", "1_3", "1_4","2_1", "2_2", "2_3", "2_4","3_1", "3_2", "3_3", "3_4","4_1", "4_2", "4_3", "4_4"]
+    ["2_1","2_2","2_3","2_4"]
+    #["1_1", "1_2", "1_3", "1_4","2_1", "2_2", "2_3", "2_4","3_1", "3_2", "3_3", "3_4","4_1", "4_2", "4_3", "4_4"]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Per-Experiment Loop
@@ -65,6 +85,13 @@ for exp_id in exp_ids
     println("\n" * "="^60)
     println("Running experiment: $exp_id")
     println("="^60)
+
+    # ── Judgement points for this experiment ──────────────────────────────────
+
+    exp_parts  = split(exp_id, "_")
+    jp_problem = parse(Int, exp_parts[1])
+    jp_set     = parse(Int, exp_parts[2])
+    jp_times   = JUDGEMENT_POINTS[(jp_problem - 1) * 4 + jp_set]
 
     # ── Locate plan file ──────────────────────────────────────────────────────
 
@@ -125,14 +152,18 @@ for exp_id in exp_ids
     save(traj_gif_path, anim_traj)
     println("Saved trajectory animation → $traj_gif_path")
 
-    frame_idxs = collect(1:max(1, div(length(plan), 3)):length(plan)+1)
+    # Frame indices for storyboard: initial state + each judgement point state
+    # jp_times are action-step indices (1-indexed); obs_traj frame = action_step + 1
+    frame_idxs   = vcat([1], min.(jp_times .+ 1, length(obs_traj)))
+    frame_titles = vcat(["t = 0"], ["t = $t" for t in jp_times])
+
     storyboard = render_storyboard(
         anim_traj, frame_idxs;
-        subtitles = ["t = $(t-1)" for t in frame_idxs],
-        xlabels   = ["t = $(t-1)" for t in frame_idxs],
+        subtitles  = frame_titles,
+        xlabels    = frame_titles,
         xlabelsize = 20, subtitlesize = 24
     )
-    
+
     #= ── Run 1: Standard SIPS (commented out) ───────────────────────────────
 
     sips_planner = ProbAStarPlanner(RelaxedMazeDist(), search_noise=0.1)
@@ -177,40 +208,11 @@ for exp_id in exp_ids
         callback  = sips_logger_cb
     )
 
-    # ── Diagnostic: final particle state ─────────────────────────────────────
-    println("\n[DIAG] Final SIPS particle goals (goal index → goal term → weight):")
-    traces  = GenParticleFilters.get_traces(sips_pf_state)
-    weights = GenParticleFilters.get_norm_weights(sips_pf_state)
-    goal_w  = Dict{Int, Float64}()
-    for (tr, w) in zip(traces, weights)
-        g = tr[goal_addr]
-        goal_w[g] = get(goal_w, g, 0.0) + w
-    end
-    for g in sort(collect(keys(goal_w)))
-        println("  goal=$g  ($(goals[g]))  weighted_prob=$(round(goal_w[g]; digits=4))")
-    end
-    # Also print position of the heaviest particle
-    best_idx = argmax(weights)
-    best_tr  = traces[best_idx]
-    T_final  = length(plan)
-    env_state_final = best_tr[:timestep => T_final => :env]
-    xpos_term  = parse_pddl("(xpos)")
-    ypos_term  = parse_pddl("(ypos)")
-    has1_term  = parse_pddl("(has gem1)")
-    has2_term  = parse_pddl("(has gem2)")
-    has3_term  = parse_pddl("(has gem3)")
-    println("[DIAG] Heaviest particle (w=$(round(weights[best_idx]; digits=6))):")
-    println("  goal=$(best_tr[goal_addr])  xpos=$(env_state_final[xpos_term])  ypos=$(env_state_final[ypos_term])")
-    println("  has gem1=$(env_state_final[has1_term])  has gem2=$(env_state_final[has2_term])  has gem3=$(env_state_final[has3_term])")
-    obs_final = obs_traj[end]
-    println("[DIAG] Observed final state: xpos=$(obs_final[xpos_term])  ypos=$(obs_final[ypos_term])  has gem2=$(obs_final[has2_term])")
-
     sips_goal_probs = reduce(hcat, sips_logger_cb.data[:goal_probs])
 
     sips_csv_path = joinpath(@__DIR__, "../example/doors-keys-gems/goal_probs_SIPS/goal_probs_SIPS_$(exp_id).csv")
     open(sips_csv_path, "w") do io
         println(io, join(goal_names, ","))
-        # FIXED: Start at index 2 to skip t=0
         for t in 2:size(sips_goal_probs, 2)
             println(io, join(sips_goal_probs[:, t], ","))
         end
@@ -235,7 +237,7 @@ for exp_id in exp_ids
             budget_dist      = shifted_neg_binom,
             budget_dist_args = (2, 0.2, 1)
         ),
-        act_epsilon = 0.05
+        act_epsilon = 0.01
     )
 
     abs_world_config = WorldConfig(
@@ -271,52 +273,54 @@ for exp_id in exp_ids
     abs_csv_path = joinpath(@__DIR__, "../example/doors-keys-gems/goal_probs_hierarchical/goal_probs_hierarchical_$(exp_id).csv")
     open(abs_csv_path, "w") do io
         println(io, join(goal_names, ","))
-        # FIXED: Start at index 2 to skip t=0
         for t in 2:size(abs_goal_probs, 2)
             println(io, join(abs_goal_probs[:, t], ","))
         end
     end
     println("Saved abstract model goal probabilities → $abs_csv_path")
 
-    # ── Critical Timesteps ────────────────────────────────────────────────────
+    # ── Human Data ───────────────────────────────────────────────────────────
 
     csv_path         = joinpath(@__DIR__, "../domains/doors-keys-gems/average_human_results_arrays/$(exp_id).csv")
     human_data_1d    = vec(readdlm(csv_path, ',', Float64))
     n_time_steps     = div(length(human_data_1d), length(goals))
     human_goal_probs = reshape(human_data_1d, length(goals), n_time_steps)
 
-    T        = length(plan)
-    step     = div(T, n_time_steps + 1)
-    human_ts = [step * i for i in 0:n_time_steps-1]       # e.g. [0,5,10,15]
-    model_ts = [step * i for i in 1:div(T, step)]         # e.g. [5,10,15,20,25]
-    model_xs = collect(0:T)
+    T = length(plan)
+
+    # Trim human data to JP=1 (t=0) + actual JPs; use JP action-step numbers as x-coords
+    n_jp    = length(jp_times)
+    n_human = min(n_jp + 1, n_time_steps)
+    human_goal_probs_plot = human_goal_probs[:, 1:n_human]
+    human_xs = vcat([0], jp_times[1:n_human-1])
+    model_xs = collect(0:T)   # full model x-axis (abs_goal_probs has T+1 columns)
 
     # ── Three Storyboards ─────────────────────────────────────────────────────
 
     # 1. Human storyboard
     human_storyboard = render_storyboard(
         anim_traj, frame_idxs;
-        subtitles = ["t = $(t-1)" for t in frame_idxs],
-        xlabels   = ["t = $(t-1)" for t in frame_idxs],
+        subtitles  = frame_titles,
+        xlabels    = frame_titles,
         xlabelsize = 20, subtitlesize = 24
     )
     storyboard_goal_lines!(
-        human_storyboard, human_goal_probs, human_ts;
-        xs = human_ts, goal_names = goal_names, goal_colors = goal_colors, show_legend = true
+        human_storyboard, human_goal_probs_plot, jp_times;
+        xs = human_xs, goal_names = goal_names, goal_colors = goal_colors, show_legend = true
     )
     human_storyboard_path = joinpath(@__DIR__, "../example/doors-keys-gems/solutions/storyboard_human/storyboard_human_$(exp_id).png")
     save(human_storyboard_path, human_storyboard)
     println("Saved human storyboard → $human_storyboard_path")
 
-    #= # 2. SIPS storyboard (commented out)
+    #= # 2. SIPS storyboard (commented out — SIPS runner is disabled above)
     sips_storyboard = render_storyboard(
         anim_traj, frame_idxs;
-        subtitles = ["t = $(t-1)" for t in frame_idxs],
-        xlabels   = ["t = $(t-1)" for t in frame_idxs],
+        subtitles  = frame_titles,
+        xlabels    = frame_titles,
         xlabelsize = 20, subtitlesize = 24
     )
     storyboard_goal_lines!(
-        sips_storyboard, sips_goal_probs, model_ts;
+        sips_storyboard, sips_goal_probs, jp_times;
         xs = model_xs, goal_names = goal_names, goal_colors = goal_colors, show_legend = true
     )
     sips_storyboard_path = joinpath(@__DIR__, "../example/doors-keys-gems/solutions/storyboard_SIPS/storyboard_SIPS_$(exp_id).png")
@@ -326,7 +330,7 @@ for exp_id in exp_ids
 
     # 3. Hierarchical storyboard
     storyboard_goal_lines!(
-        storyboard, abs_goal_probs, model_ts;
+        storyboard, abs_goal_probs, jp_times;
         xs = model_xs, goal_names = goal_names, goal_colors = goal_colors, show_legend = true
     )
     abs_storyboard_path = joinpath(@__DIR__, "../example/doors-keys-gems/solutions/storyboard_hierarchical/storyboard_hierarchical_$(exp_id).png")
@@ -336,7 +340,6 @@ for exp_id in exp_ids
     println("\nDone. Outputs for experiment $(exp_id):")
     println("  Trajectory GIF          : $traj_gif_path")
     println("  Human storyboard        : $human_storyboard_path")
-    # println("  SIPS storyboard         : $sips_storyboard_path")
     println("  Hierarchical storyboard : $abs_storyboard_path")
     println("  Abstract CSV            : $abs_csv_path")
 
