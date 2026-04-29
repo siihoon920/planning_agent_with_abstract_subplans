@@ -54,8 +54,7 @@ n_samples = 200
 # Accept experiment IDs from command line, or run all 8 by default
 exp_ids = length(ARGS) > 0 ?
 collect(ARGS) :
-["4_1"]
-    #["1_1", "1_2", "1_3", "1_4","2_1", "2_2", "2_3", "2_4","3_1", "3_2", "3_3", "3_4","4_1", "4_2", "4_3", "4_4"]
+    ["1_1", "1_2", "1_3", "1_4","2_1", "2_2", "2_3", "2_4","3_1", "3_2", "3_3", "3_4","4_1", "4_2", "4_3", "4_4"]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Per-Experiment Loop
@@ -232,7 +231,7 @@ for exp_id in exp_ids
         replan_args = (
             prob_replan      = 0.1,
             budget_dist      = shifted_neg_binom,
-            budget_dist_args = (2, 0.01, 1)
+            budget_dist_args = (2, 0.2, 1)
         ),
         act_epsilon = 0.05
     )

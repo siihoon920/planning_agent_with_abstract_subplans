@@ -17,8 +17,10 @@ Run from the repository root:
 using PDDL, Printf
 using SymbolicPlanners, Plinf
 using Gen, GenParticleFilters
+using PDDLViz, GLMakie
 using DelimitedFiles, Random
 
+include("../example/doors-keys-gems/utils.jl")
 include("AbstractPlanner.jl")
 
 PDDL.Arrays.register!()
@@ -53,7 +55,7 @@ exp_ids = length(ARGS) > 0 ?
 # Outer run loop
 # ──────────────────────────────────────────────────────────────────────────────
 
-for run_id in 1:N_RUNS
+for run_id in 4:N_RUNS
     Random.seed!(RUN_SEEDS[run_id])
 
     println("\n" * "█"^62)
@@ -106,7 +108,7 @@ for run_id in 1:N_RUNS
         obs_params = ground_obs_params(obs_params, domain, state)
         obs_terms  = collect(keys(obs_params))
 
-        # ── SIPS ─────────────────────────────────────────────────────────────
+        #= ── SIPS (commented out) ──────────────────────────────────────────────
 
         sips_logger_cb = DataLoggerCallback(
             t          = (t, pf) -> t::Int,
@@ -151,6 +153,8 @@ for run_id in 1:N_RUNS
             end
         end
         println("  SIPS   → $sips_csv")
+
+        =# # ── end SIPS ──────────────────────────────────────────────────────────
 
         # ── Abstract SIPS ────────────────────────────────────────────────────
 
