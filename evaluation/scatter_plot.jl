@@ -36,22 +36,22 @@ const PROBLEMS = 1,3,4
 const SETS     = 1:4
 
 const JUDGEMENT_POINTS = [
-    [1, 7, 17, 23],          # 1_1
-    [1, 9, 14, 17],          # 1_2
-    [1, 9, 17, 24],          # 1_3
-    [1, 7, 14, 23, 32],      # 1_4
-    [1, 6, 11, 24],          # 2_1
-    [1, 4, 6, 11],           # 2_2
-    [1, 5, 8, 13],           # 2_3
-    [1, 9, 12, 31, 44],      # 2_4
-    [1, 7, 22, 37, 50],      # 3_1
-    [1, 14, 24, 29, 40, 54], # 3_2
-    [1, 7, 13, 20, 26],      # 3_3
-    [1, 6, 11, 26, 36, 49],  # 3_4
-    [1, 8, 14, 20],          # 4_1
-    [1, 4, 7, 10],           # 4_2
-    [1, 5, 8, 10],           # 4_3
-    [1, 7, 12, 18],          # 4_4
+    [7, 17, 23],             # 1_1
+    [9, 14, 17],             # 1_2
+    [9, 17, 24],             # 1_3
+    [7, 14, 23, 32],         # 1_4
+    [6, 11, 24],             # 2_1
+    [4, 6, 11],              # 2_2
+    [5, 8, 13],              # 2_3
+    [9, 12, 31, 44],         # 2_4
+    [7, 22, 37, 50],         # 3_1
+    [14, 24, 29, 40, 54],    # 3_2
+    [7, 13, 20, 26],         # 3_3
+    [6, 11, 26, 36, 49],     # 3_4
+    [8, 14, 20],             # 4_1
+    [4, 7, 10],              # 4_2
+    [5, 8, 10],              # 4_3
+    [7, 12, 18],             # 4_4
 ]
 
 function load_model(path::String)
@@ -95,8 +95,9 @@ function extract_scatter_pairs(model::Matrix, human::Matrix, times::Vector{Int})
     n_times = size(human, 2)
 
     # Keep only times within the model's output range
-    valid_mask  = [1 <= t <= size(model, 2) for t in times[1:n_times]]
-    valid_times = times[1:n_times][valid_mask]
+    shifted    = times[1:n_times] .- 1   # JPs are 1-indexed from t=0; model CSV starts at t=1
+    valid_mask  = [1 <= t <= size(model, 2) for t in shifted]
+    valid_times = shifted[valid_mask]
     valid_cols  = (1:n_times)[valid_mask]
 
     isempty(valid_times) && return Float64[], Float64[]
@@ -125,7 +126,7 @@ for problem in PROBLEMS, s in SETS
     !isfile(human_path) && continue
 
     times     = JUDGEMENT_POINTS[(problem - 1) * length(SETS) + s]
-    human_mat = load_human(human_path, length(times))
+    human_mat = load_human(human_path, length(times) + 1)[:, 2:end]
     global total_points += size(human_mat, 2) * N_GOALS
 
     if isfile(sips_path)

@@ -28,29 +28,29 @@ const PROBLEMS = 1:4
 const SETS     = 1:4
 
 const OPTIMAL_PROBLEMS    = Set([1])
-const SUBOPTIMAL_PROBLEMS = Set([3, 4])
+const SUBOPTIMAL_PROBLEMS = Set([2, 3, 4])
 
 # Survey judgement-point timestamps, ordered: 1_1, 1_2, 1_3, 1_4,
 #                                              2_1, 2_2, 2_3, 2_4,
 #                                              3_1, 3_2, 3_3, 3_4,
 #                                              4_1, 4_2, 4_3, 4_4
 const JUDGEMENT_POINTS = [
-    [1, 7, 17, 23],        # 1_1
-    [1, 9, 14, 17],        # 1_2
-    [1, 9, 17, 24],        # 1_3
-    [1, 7, 14, 23, 32],    # 1_4
-    [1, 6, 11, 24],        # 2_1
-    [1, 4, 6, 11],         # 2_2
-    [1, 5, 8, 13],         # 2_3
-    [1, 9, 12, 31, 44],    # 2_4
-    [1, 7, 22, 37, 50],    # 3_1
-    [1, 14, 24, 29, 40, 54], # 3_2
-    [1, 7, 13, 20, 26],    # 3_3
-    [1, 6, 11, 26, 36, 49], # 3_4
-    [1, 8, 14, 20],        # 4_1
-    [1, 4, 7, 10],         # 4_2
-    [1, 5, 8, 10],         # 4_3
-    [1, 7, 12, 18],        # 4_4
+    [7, 17, 23],           # 1_1
+    [9, 14, 17],           # 1_2
+    [9, 17, 24],           # 1_3
+    [7, 14, 23, 32],       # 1_4
+    [6, 11, 24],           # 2_1
+    [4, 6, 11],            # 2_2
+    [5, 8, 13],            # 2_3
+    [9, 12, 31, 44],       # 2_4
+    [7, 22, 37, 50],       # 3_1
+    [14, 24, 29, 40, 54],  # 3_2
+    [7, 13, 20, 26],       # 3_3
+    [6, 11, 26, 36, 49],   # 3_4
+    [8, 14, 20],           # 4_1
+    [4, 7, 10],            # 4_2
+    [5, 8, 10],            # 4_3
+    [7, 12, 18],           # 4_4
 ]
 
 # ─────────────────────────────────────────────────────────────
@@ -130,13 +130,14 @@ function pcc_at_times(model::Matrix, human::Matrix, times::Vector{Int}, exp_id::
     n_times = size(human, 2)   # == length(times) after load_human trimming
 
     # Identify valid times (within model's output range)
-    valid_mask  = [1 <= t <= size(model, 2) for t in times[1:n_times]]
+    shifted     = times[1:n_times] .- 1   # JPs are 1-indexed from t=0; model CSV starts at t=1
+    valid_mask  = [1 <= t <= size(model, 2) for t in shifted]
     n_dropped   = count(!, valid_mask)
     if n_dropped > 0
-        @warn "[$exp_id] $n_dropped time(s) exceed model length ($(size(model,2))), dropped"
+        @warn "[$exp_id] $n_dropped time(s) out of model range ($(size(model,2))), dropped"
     end
 
-    valid_times  = times[1:n_times][valid_mask]
+    valid_times  = shifted[valid_mask]
     valid_cols   = (1:n_times)[valid_mask]
 
     length(valid_times) < 2 && return NaN
@@ -175,7 +176,7 @@ function evaluate_all()
         end
 
         times     = JUDGEMENT_POINTS[(problem - 1) * length(SETS) + s]
-        human_mat = load_human(human_path, length(times))
+        human_mat = load_human(human_path, length(times) + 1)[:, 2:end]
 
         sips_r = if isfile(sips_path)
             pcc_at_times(load_model(sips_path), human_mat, times, exp_id)
@@ -218,32 +219,28 @@ function print_table(results::Vector{Result})
 
     sips_all = [r.sips_pcc for r in results]
     abs_all  = [r.abs_pcc  for r in results]
-    sips_opt = [r.sips_pcc for r in results if r.problem in OPTIMAL_PROBLEMS]
-    abs_opt  = [r.abs_pcc  for r in results if r.problem in OPTIMAL_PROBLEMS]
+    sips_opt = [r.sips_pcc for r in results if r.problem == 1]
+    abs_opt  = [r.abs_pcc  for r in results if r.problem == 1]
     sips_sub = [r.sips_pcc for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
     abs_sub  = [r.abs_pcc  for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
-
-    sips_no2 = [r.sips_pcc for r in results if r.problem != 2]
-    abs_no2  = [r.abs_pcc  for r in results if r.problem != 2]
+    sips_p2  = [r.sips_pcc for r in results if r.problem == 2]
+    abs_p2   = [r.abs_pcc  for r in results if r.problem == 2]
+    sips_p3  = [r.sips_pcc for r in results if r.problem == 3]
+    abs_p3   = [r.abs_pcc  for r in results if r.problem == 3]
+    sips_p4  = [r.sips_pcc for r in results if r.problem == 4]
+    abs_p4   = [r.abs_pcc  for r in results if r.problem == 4]
 
     println()
     sep2 = "─" ^ 54
     println(sep2)
-    @printf "%-24s  %12s  %14s\n" "Category" "SIPS PCC" "Abstract PCC"
+    @printf "%-28s  %8s  %12s\n" "Category" "SIPS PCC" "Abstract PCC"
     println(sep2)
-    @printf "%-24s  %12.4f  %14.4f\n" "Overall mean"        nanmean(sips_all) nanmean(abs_all)
-    @printf "%-24s  %12.4f  %14.4f\n" "Optimal (prob 1)"    nanmean(sips_opt) nanmean(abs_opt)
-    @printf "%-24s  %12.4f  %14.4f\n" "Sub-optimal (3 & 4)" nanmean(sips_sub) nanmean(abs_sub)
-    println(sep2)
-
-    println()
-    println("  (excluding problem 2)")
-    println(sep2)
-    @printf "%-24s  %12s  %14s\n" "Category" "SIPS PCC" "Abstract PCC"
-    println(sep2)
-    @printf "%-24s  %12.4f  %14.4f\n" "Overall (excl. prob 2)" nanmean(sips_no2) nanmean(abs_no2)
-    @printf "%-24s  %12.4f  %14.4f\n" "Optimal (prob 1)"       nanmean(sips_opt) nanmean(abs_opt)
-    @printf "%-24s  %12.4f  %14.4f\n" "Sub-optimal (3 & 4)"    nanmean(sips_sub) nanmean(abs_sub)
+    @printf "%-28s  %8.4f  %12.4f\n" "Overall"                  nanmean(sips_all) nanmean(abs_all)
+    @printf "%-28s  %8.4f  %12.4f\n" "Optimal (prob 1)"         nanmean(sips_opt) nanmean(abs_opt)
+    @printf "%-28s  %8.4f  %12.4f\n" "Suboptimal (2, 3, 4)"     nanmean(sips_sub) nanmean(abs_sub)
+    @printf "%-28s  %8.4f  %12.4f\n" "  Action mistakes (2)"    nanmean(sips_p2)  nanmean(abs_p2)
+    @printf "%-28s  %8.4f  %12.4f\n" "  Plan mistakes (3)"      nanmean(sips_p3)  nanmean(abs_p3)
+    @printf "%-28s  %8.4f  %12.4f\n" "  Short-sighted plan (4)" nanmean(sips_p4)  nanmean(abs_p4)
     println(sep2, "\n")
 end
 
@@ -261,18 +258,24 @@ function save_csv(results::Vector{Result})
 
         sips_all = [r.sips_pcc for r in results]
         abs_all  = [r.abs_pcc  for r in results]
-        sips_opt = [r.sips_pcc for r in results if r.problem in OPTIMAL_PROBLEMS]
-        abs_opt  = [r.abs_pcc  for r in results if r.problem in OPTIMAL_PROBLEMS]
+        sips_opt = [r.sips_pcc for r in results if r.problem == 1]
+        abs_opt  = [r.abs_pcc  for r in results if r.problem == 1]
         sips_sub = [r.sips_pcc for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
         abs_sub  = [r.abs_pcc  for r in results if r.problem in SUBOPTIMAL_PROBLEMS]
-        sips_no2 = [r.sips_pcc for r in results if r.problem != 2]
-        abs_no2  = [r.abs_pcc  for r in results if r.problem != 2]
+        sips_p2  = [r.sips_pcc for r in results if r.problem == 2]
+        abs_p2   = [r.abs_pcc  for r in results if r.problem == 2]
+        sips_p3  = [r.sips_pcc for r in results if r.problem == 3]
+        abs_p3   = [r.abs_pcc  for r in results if r.problem == 3]
+        sips_p4  = [r.sips_pcc for r in results if r.problem == 4]
+        abs_p4   = [r.abs_pcc  for r in results if r.problem == 4]
 
         println(io, "\ncategory,sips_pcc,abstract_pcc")
-        @printf io "overall,%.6f,%.6f\n"              nanmean(sips_all) nanmean(abs_all)
-        @printf io "optimal,%.6f,%.6f\n"              nanmean(sips_opt) nanmean(abs_opt)
-        @printf io "suboptimal,%.6f,%.6f\n"           nanmean(sips_sub) nanmean(abs_sub)
-        @printf io "overall_excl_prob2,%.6f,%.6f\n"   nanmean(sips_no2) nanmean(abs_no2)
+        @printf io "overall,%.6f,%.6f\n"                  nanmean(sips_all) nanmean(abs_all)
+        @printf io "optimal,%.6f,%.6f\n"                  nanmean(sips_opt) nanmean(abs_opt)
+        @printf io "suboptimal,%.6f,%.6f\n"               nanmean(sips_sub) nanmean(abs_sub)
+        @printf io "action_mistakes,%.6f,%.6f\n"          nanmean(sips_p2)  nanmean(abs_p2)
+        @printf io "plan_mistakes,%.6f,%.6f\n"            nanmean(sips_p3)  nanmean(abs_p3)
+        @printf io "short_sighted_plan,%.6f,%.6f\n"       nanmean(sips_p4)  nanmean(abs_p4)
     end
     println("Saved → $out")
 end

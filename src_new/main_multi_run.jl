@@ -175,7 +175,7 @@ for run_id in 4:N_RUNS
                     replan_args = (
                         prob_replan      = 0.1,
                         budget_dist      = shifted_neg_binom,
-                        budget_dist_args = (2, 0.1, 1)
+                        budget_dist_args = (2, 0.2, 1)
                     ),
                     act_epsilon = 0.05
                 ),

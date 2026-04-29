@@ -29,22 +29,22 @@ const PROBLEMS = 1:4
 const SETS     = 1:4
 
 const JUDGEMENT_POINTS = [
-    [1, 7, 17, 23],          # 1_1
-    [1, 9, 14, 17],          # 1_2
-    [1, 9, 17, 24],          # 1_3
-    [1, 7, 14, 23, 32],      # 1_4
-    [1, 6, 11, 24],          # 2_1
-    [1, 4, 6, 11],           # 2_2
-    [1, 5, 8, 13],           # 2_3
-    [1, 9, 12, 31, 44],      # 2_4
-    [1, 7, 22, 37, 50],      # 3_1
-    [1, 14, 24, 29, 40, 54], # 3_2
-    [1, 7, 13, 20, 26],      # 3_3
-    [1, 6, 11, 26, 36, 49],  # 3_4
-    [1, 8, 14, 20],          # 4_1
-    [1, 4, 7, 10],           # 4_2
-    [1, 5, 8, 10],           # 4_3
-    [1, 7, 12, 18],          # 4_4
+    [7, 17, 23],             # 1_1
+    [9, 14, 17],             # 1_2
+    [9, 17, 24],             # 1_3
+    [7, 14, 23, 32],         # 1_4
+    [6, 11, 24],             # 2_1
+    [4, 6, 11],              # 2_2
+    [5, 8, 13],              # 2_3
+    [9, 12, 31, 44],         # 2_4
+    [7, 22, 37, 50],         # 3_1
+    [14, 24, 29, 40, 54],    # 3_2
+    [7, 13, 20, 26],         # 3_3
+    [6, 11, 26, 36, 49],     # 3_4
+    [8, 14, 20],             # 4_1
+    [4, 7, 10],              # 4_2
+    [5, 8, 10],              # 4_3
+    [7, 12, 18],             # 4_4
 ]
 
 # ─────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ for problem in PROBLEMS, s in SETS
     abs_path  = joinpath(ABS_DIR,  "goal_probs_hierarchical_$(exp_id).csv")
 
     times     = JUDGEMENT_POINTS[(problem - 1) * length(SETS) + s]
-    human_mat = load_human(human_path, length(times))
+    human_mat = load_human(human_path, length(times) + 1)[:, 2:end]
 
     sips_mat = isfile(sips_path) ? load_model(sips_path) : nothing
     abs_mat  = isfile(abs_path)  ? load_model(abs_path)  : nothing
@@ -131,14 +131,15 @@ for ed in all_exp
     for k in 1:n_t
         t = ed.times[k]
 
-        sips_r = if ed.sips_mat !== nothing && t <= size(ed.sips_mat, 2)
-            pearson_r(vec(ed.sips_mat[:, t]), vec(ed.human_mat[:, k]))
+        tm = t - 1   # JPs are 1-indexed from t=0; model CSV starts at t=1
+        sips_r = if ed.sips_mat !== nothing && 1 <= tm <= size(ed.sips_mat, 2)
+            pearson_r(vec(ed.sips_mat[:, tm]), vec(ed.human_mat[:, k]))
         else
             NaN
         end
 
-        abs_r = if ed.abs_mat !== nothing && t <= size(ed.abs_mat, 2)
-            pearson_r(vec(ed.abs_mat[:, t]), vec(ed.human_mat[:, k]))
+        abs_r = if ed.abs_mat !== nothing && 1 <= tm <= size(ed.abs_mat, 2)
+            pearson_r(vec(ed.abs_mat[:, tm]), vec(ed.human_mat[:, k]))
         else
             NaN
         end
@@ -166,12 +167,13 @@ for ed in all_exp
 
         hv = vec(ed.human_mat[:, k])
 
-        if ed.sips_mat !== nothing && t <= size(ed.sips_mat, 2)
-            append!(sips_pool[k], vec(ed.sips_mat[:, t]))
+        tm = t - 1
+        if ed.sips_mat !== nothing && 1 <= tm <= size(ed.sips_mat, 2)
+            append!(sips_pool[k], vec(ed.sips_mat[:, tm]))
             append!(hum_pool[k],  hv)   # parallel append for sips
         end
-        if ed.abs_mat !== nothing && t <= size(ed.abs_mat, 2)
-            append!(abs_pool[k], vec(ed.abs_mat[:, t]))
+        if ed.abs_mat !== nothing && 1 <= tm <= size(ed.abs_mat, 2)
+            append!(abs_pool[k], vec(ed.abs_mat[:, tm]))
         end
     end
 end
@@ -192,7 +194,7 @@ for k in 1:max_tf
     for ed in all_exp
         k > length(ed.times) && continue
         t = ed.times[k]
-        if ed.abs_mat !== nothing && t <= size(ed.abs_mat, 2)
+        if ed.abs_mat !== nothing && 1 <= t-1 <= size(ed.abs_mat, 2)
             append!(abs_hum, vec(ed.human_mat[:, k]))
         end
     end

@@ -29,25 +29,25 @@ const PROBLEMS = 1:4
 const SETS     = 1:4
 
 const OPTIMAL_PROBLEMS    = Set([1])
-const SUBOPTIMAL_PROBLEMS = Set([3, 4])
+const SUBOPTIMAL_PROBLEMS = Set([2, 3, 4])
 
 const JUDGEMENT_POINTS = [
-    [1, 7, 17, 23],          # 1_1
-    [1, 9, 14, 17],          # 1_2
-    [1, 9, 17, 24],          # 1_3
-    [1, 7, 14, 23, 32],      # 1_4
-    [1, 6, 11, 24],          # 2_1
-    [1, 4, 6, 11],           # 2_2
-    [1, 5, 8, 13],           # 2_3
-    [1, 9, 12, 31, 44],      # 2_4
-    [1, 7, 22, 37, 50],      # 3_1
-    [1, 14, 24, 29, 40, 54], # 3_2
-    [1, 7, 13, 20, 26],      # 3_3
-    [1, 6, 11, 26, 36, 49],  # 3_4
-    [1, 8, 14, 20],          # 4_1
-    [1, 4, 7, 10],           # 4_2
-    [1, 5, 8, 10],           # 4_3
-    [1, 7, 12, 18],          # 4_4
+    [7, 17, 23],             # 1_1
+    [9, 14, 17],             # 1_2
+    [9, 17, 24],             # 1_3
+    [7, 14, 23, 32],         # 1_4
+    [6, 11, 24],             # 2_1
+    [4, 6, 11],              # 2_2
+    [5, 8, 13],              # 2_3
+    [9, 12, 31, 44],         # 2_4
+    [7, 22, 37, 50],         # 3_1
+    [14, 24, 29, 40, 54],    # 3_2
+    [7, 13, 20, 26],         # 3_3
+    [6, 11, 26, 36, 49],     # 3_4
+    [8, 14, 20],             # 4_1
+    [4, 7, 10],              # 4_2
+    [5, 8, 10],              # 4_3
+    [7, 12, 18],             # 4_4
 ]
 
 # ─────────────────────────────────────────────────────────────
@@ -82,8 +82,9 @@ end
 
 function pcc_at_times(model::Matrix, human::Matrix, times::Vector{Int})
     n_times    = size(human, 2)
-    valid_mask = [1 <= t <= size(model, 2) for t in times[1:n_times]]
-    valid_times = times[1:n_times][valid_mask]
+    shifted    = times[1:n_times] .- 1   # JPs are 1-indexed from t=0; model CSV starts at t=1
+    valid_mask = [1 <= t <= size(model, 2) for t in shifted]
+    valid_times = shifted[valid_mask]
     valid_cols  = (1:n_times)[valid_mask]
     length(valid_times) < 2 && return NaN
     return pearson_r(vec(model[:, valid_times]), vec(human[:, valid_cols]))
@@ -112,7 +113,7 @@ for problem in PROBLEMS, s in SETS
     !isfile(human_path) && continue
 
     times     = JUDGEMENT_POINTS[(problem - 1) * length(SETS) + s]
-    human_mat = load_human(human_path, length(times))
+    human_mat = load_human(human_path, length(times) + 1)[:, 2:end]
 
     sips_rs = Float64[]
     abs_rs  = Float64[]
@@ -168,10 +169,12 @@ function cat_stats(rs::Vector{RunResult}, pred)
 end
 
 categories = [
-    ("Overall",              r -> true),
-    ("Optimal  (prob 1)",    r -> r.problem in OPTIMAL_PROBLEMS),
-    ("Sub-opt  (3 & 4)",     r -> r.problem in SUBOPTIMAL_PROBLEMS),
-    ("Excl. prob 2",         r -> r.problem != 2),
+    ("Overall",                r -> true),
+    ("Optimal (prob 1)",       r -> r.problem == 1),
+    ("Suboptimal (2, 3, 4)",   r -> r.problem in SUBOPTIMAL_PROBLEMS),
+    ("  Action mistakes (2)",  r -> r.problem == 2),
+    ("  Plan mistakes (3)",    r -> r.problem == 3),
+    ("  Short-sighted (4)",    r -> r.problem == 4),
 ]
 
 sep2 = "─" ^ 70

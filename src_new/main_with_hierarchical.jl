@@ -133,7 +133,7 @@ for exp_id in exp_ids
         xlabelsize = 20, subtitlesize = 24
     )
     
-    # ── Run 1: Standard SIPS (ProbAStarPlanner) ───────────────────────────────
+    #= ── Run 1: Standard SIPS (commented out) ───────────────────────────────
 
     sips_planner = ProbAStarPlanner(RelaxedMazeDist(), search_noise=0.1)
 
@@ -217,11 +217,13 @@ for exp_id in exp_ids
     end
     println("Saved SIPS model goal probabilities → $sips_csv_path")
 
+    =# # ── end SIPS ──────────────────────────────────────────────────────────────
+
     # ── Run 2: Abstract Planner SIPS ──────────────────────────────────────────
 
     abs_planner = AbstractPlanners.AbstractPlanner(
         RelaxedMazeDist();
-        search_noise=0.1, save_search=true
+        search_noise=0.3, save_search=true
     )
 
     abs_agent_config = AgentConfig(
@@ -306,7 +308,7 @@ for exp_id in exp_ids
     save(human_storyboard_path, human_storyboard)
     println("Saved human storyboard → $human_storyboard_path")
 
-    # 2. SIPS storyboard
+    #= # 2. SIPS storyboard (commented out)
     sips_storyboard = render_storyboard(
         anim_traj, frame_idxs;
         subtitles = ["t = $(t-1)" for t in frame_idxs],
@@ -320,6 +322,7 @@ for exp_id in exp_ids
     sips_storyboard_path = joinpath(@__DIR__, "../example/doors-keys-gems/solutions/storyboard_SIPS/storyboard_SIPS_$(exp_id).png")
     save(sips_storyboard_path, sips_storyboard)
     println("Saved SIPS storyboard → $sips_storyboard_path")
+    =#
 
     # 3. Hierarchical storyboard
     storyboard_goal_lines!(
@@ -333,7 +336,7 @@ for exp_id in exp_ids
     println("\nDone. Outputs for experiment $(exp_id):")
     println("  Trajectory GIF          : $traj_gif_path")
     println("  Human storyboard        : $human_storyboard_path")
-    println("  SIPS storyboard         : $sips_storyboard_path")
+    # println("  SIPS storyboard         : $sips_storyboard_path")
     println("  Hierarchical storyboard : $abs_storyboard_path")
     println("  Abstract CSV            : $abs_csv_path")
 
