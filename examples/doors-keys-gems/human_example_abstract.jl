@@ -5,6 +5,7 @@ using PDDLViz, GLMakie
 using DelimitedFiles
 
 include("utils.jl")
+include("stimuli_times.jl")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # AbstractPlanner wrapper
@@ -201,8 +202,8 @@ traj_gif_path = joinpath(@__DIR__, "human_trajectory_abstract_$(exp_id).gif")
 save(traj_gif_path, anim_traj)
 println("Saved trajectory animation → $traj_gif_path")
 
-# Automatically pick evenly-spaced keyframes for the storyboard
-frame_idxs = collect(1:max(1, div(length(plan), 3)):length(plan)+1)
+# Use the stimuli timepoints (1-indexed state numbers) as storyboard frames
+frame_idxs = STIMULI_TIMES[exp_id]
 storyboard = render_storyboard(
     anim_traj, frame_idxs;
     subtitles = ["t = $(t-1)" for t in frame_idxs],
@@ -281,7 +282,7 @@ human_clipped = human_goal_probs[:, 1:T_common]
 storyboard_goal_lines!(
     storyboard,
     human_clipped,
-    collect(1:T_common);
+    frame_idxs[1:T_common] .- 1;  # convert 1-indexed state numbers to action steps
     goal_names  = goal_names,
     goal_colors = goal_colors,
     show_legend = true

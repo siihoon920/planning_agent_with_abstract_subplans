@@ -5,6 +5,7 @@ using PDDLViz, GLMakie
 using DelimitedFiles
 
 include("utils.jl")
+include("stimuli_times.jl")
 
 
 println("Saving outputs to: ", @__DIR__)
@@ -85,8 +86,8 @@ trajectory_gif_path = joinpath(@__DIR__, "human_trajectory_$exp_id.gif")
 save(trajectory_gif_path, anim_traj)
 println("Saved trajectory animation to $trajectory_gif_path")
 
-# Create a storyboard with a few key frames dynamically based on plan length
-frame_idxs = collect(1:max(1, div(length(plan), 3)):length(plan)+1)
+# Use the stimuli timepoints (1-indexed state numbers) as storyboard frames
+frame_idxs = STIMULI_TIMES[exp_id]
 storyboard = render_storyboard(
     anim_traj,
     frame_idxs;
@@ -188,7 +189,7 @@ human_goal_probs = reshape(human_data_1d, n_goals, n_time_steps)
 storyboard_goal_lines!(
     storyboard,
     human_goal_probs,
-    collect(1:n_time_steps);
+    frame_idxs .- 1;       # convert 1-indexed state numbers to action steps
     goal_names  = goal_names,
     goal_colors = goal_colors,
     show_legend = true
