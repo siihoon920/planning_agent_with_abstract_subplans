@@ -26,16 +26,16 @@ using DelimitedFiles, Statistics, Printf
 # Paths
 # ─────────────────────────────────────────────────────────────
 
-const REPO_ROOT = dirname(@__DIR__)
-const SIPS_DIR  = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_SIPS")
-const ABS_DIR   = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_hierarchical")
-const HUMAN_DIR = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "average_human_results_arrays")
+REPO_ROOT = dirname(@__DIR__)
+SIPS_DIR  = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_SIPS")
+ABS_DIR   = joinpath(REPO_ROOT, "example", "doors-keys-gems", "goal_probs_hierarchical")
+HUMAN_DIR = joinpath(REPO_ROOT, "domains", "doors-keys-gems", "average_human_results_arrays")
 
-const N_GOALS  = 3
-const PROBLEMS = 1,3,4
-const SETS     = 1:4
+N_GOALS  = 3
+PROBLEMS = 1,3,4
+SETS     = 1:4
 
-const JUDGEMENT_POINTS = [
+JUDGEMENT_POINTS = [
     [7, 17, 23],             # 1_1
     [9, 14, 17],             # 1_2
     [9, 17, 24],             # 1_3

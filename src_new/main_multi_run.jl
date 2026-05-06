@@ -55,7 +55,7 @@ exp_ids = length(ARGS) > 0 ?
 # Outer run loop
 # ──────────────────────────────────────────────────────────────────────────────
 
-for run_id in 4:N_RUNS
+for run_id in 1:N_RUNS
     Random.seed!(RUN_SEEDS[run_id])
 
     println("\n" * "█"^62)
@@ -169,7 +169,7 @@ for run_id in 4:N_RUNS
                 agent_config = AgentConfig(
                     domain,
                     AbstractPlanners.AbstractPlanner(
-                        RelaxedMazeDist(); search_noise=0.1, save_search=true
+                        RelaxedMazeDist(); search_noise=0.3, save_search=true
                     );
                     goal_config = StaticGoalConfig(goal_prior),
                     replan_args = (

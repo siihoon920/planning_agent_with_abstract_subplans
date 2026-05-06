@@ -73,7 +73,7 @@ const JUDGEMENT_POINTS = [
 # Accept experiment IDs from command line, or run all 16 by default
 exp_ids = length(ARGS) > 0 ?
 collect(ARGS) :
-    ["2_1","2_2","2_3","2_4"]
+    ["2_1"]
     #["1_1", "1_2", "1_3", "1_4","2_1", "2_2", "2_3", "2_4","3_1", "3_2", "3_3", "3_4","4_1", "4_2", "4_3", "4_4"]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ for exp_id in exp_ids
     obs_terms  = collect(keys(obs_params))
 
     # ── Trajectory Animation ──────────────────────────────────────────────────
-
+    
     anim_traj = anim_trajectory(
         renderer, domain, obs_traj;
         framerate=5, format="gif", trail_length=10
@@ -151,12 +151,14 @@ for exp_id in exp_ids
     traj_gif_path = joinpath(@__DIR__, "../example/doors-keys-gems/solutions/trajectories/plan_trajectory_$(exp_id).gif")
     save(traj_gif_path, anim_traj)
     println("Saved trajectory animation → $traj_gif_path")
-
+    
+    
     # Frame indices for storyboard: initial state + each judgement point state
     # jp_times are action-step indices (1-indexed); obs_traj frame = action_step + 1
     frame_idxs   = vcat([1], min.(jp_times .+ 1, length(obs_traj)))
     frame_titles = vcat(["t = 0"], ["t = $t" for t in jp_times])
-
+    
+    
     storyboard = render_storyboard(
         anim_traj, frame_idxs;
         subtitles  = frame_titles,
@@ -237,7 +239,7 @@ for exp_id in exp_ids
             budget_dist      = shifted_neg_binom,
             budget_dist_args = (2, 0.2, 1)
         ),
-        act_epsilon = 0.01
+        act_epsilon = 0.05
     )
 
     abs_world_config = WorldConfig(
@@ -338,7 +340,7 @@ for exp_id in exp_ids
     println("Saved hierarchical storyboard → $abs_storyboard_path")
 
     println("\nDone. Outputs for experiment $(exp_id):")
-    println("  Trajectory GIF          : $traj_gif_path")
+    # println("  Trajectory GIF          : $traj_gif_path")
     println("  Human storyboard        : $human_storyboard_path")
     println("  Hierarchical storyboard : $abs_storyboard_path")
     println("  Abstract CSV            : $abs_csv_path")
