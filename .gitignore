@@ -30,5 +30,6 @@ Manifest.toml
 .claude/
 .gemini/
 CLAUDE.local.md
+CLAUDE.md
 .claudeignore
 gemini_output*/

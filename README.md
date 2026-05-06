@@ -1,10 +1,10 @@
 # planning_agent_with_abstract_subplans
 
-Extends [Plinf.jl](https://github.com/ztangent/Plinf.jl) with a **hierarchical (abstract) planner** for Bayesian goal inference in the Doors-Keys-Gems gridworld. The agent reasons over abstract subgoal sequences (key pickups, door unlocks) rather than individual physical steps, and a Sequential Monte Carlo particle filter infers a human observer's goal by weighting trajectories against this hierarchical planning model.
+Extends [Plinf.jl](https://github.com/ztangent/Plinf.jl) with a **compositional planner** for Bayesian goal inference in the Doors-Keys-Gems gridworld. The agent reasons over abstract subgoal sequences (key pickups, door unlocks) rather than individual physical steps, and a Sequential Monte Carlo particle filter infers a human observer's goal by weighting trajectories against this hierarchical planning model.
 
 The main comparison is:
-- **SIPS** (baseline): flat `ProbAStarPlanner` from Plinf
-- **Hierarchical SIPS**: two-level `AbstractPlanner` + `PhysicalPlanner`
+- **stepwise SIPS** (baseline): flat `ProbAStarPlanner` from Plinf
+- **compositional SIPS**: two-level `AbstractPlanner` + `PhysicalPlanner`
 
 ---
 
@@ -57,28 +57,6 @@ Results are cached in `PHYSICAL_CACHE` keyed by `hash(state)`, avoiding repeated
 
 The hierarchical planner plugs into SIPS as a drop-in replacement for the flat planner:
 
-```julia
-abs_planner = AbstractPlanners.AbstractPlanner(
-    RelaxedMazeDist();
-    search_noise=0.3, save_search=true
-)
-
-abs_agent_config = AgentConfig(
-    domain, abs_planner;
-    goal_config      = StaticGoalConfig(goal_prior),
-    replan_args      = (prob_replan=0.1, budget_dist=shifted_neg_binom, budget_dist_args=(2, 0.2, 1)),
-    act_epsilon      = 0.05
-)
-
-abs_sips_runner = SIPS(
-    abs_world_config,
-    resample_cond = :ess,
-    rejuv_cond    = :periodic,
-    rejuv_kernel  = SequentialKernel(InitGoalKernel(), ReplanKernel(2)),
-    period        = 2
-)
-```
-
 `InitGoalKernel` can resimulate the goal hypothesis from scratch; `ReplanKernel(2)` re-proposes the last 2 planning choices. Together they allow particles to recover from incorrect goal hypotheses during inference.
 
 ---
@@ -130,8 +108,8 @@ Row `t` (after header) = model's goal distribution after `t` actions.
 |---|---|
 | `solutions/trajectories/` | GIF animation of the human trajectory per experiment |
 | `solutions/storyboard_human/` | Human judgment probability plots |
-| `solutions/storyboard_SIPS/` | SIPS model probability plots |
-| `solutions/storyboard_hierarchical/` | Hierarchical model probability plots |
+| `solutions/storyboard_SIPS/` | SIPS with stepwise planner probability plots |
+| `solutions/storyboard_hierarchical/` | SIPS with compositional planner probability plots |
 
 Storyboards can be regenerated from existing CSVs (without re-running inference):
 ```bash
@@ -150,10 +128,10 @@ Computes the Pearson Correlation Coefficient (PCC) between each model's predicte
 
 For each experiment: model predictions are extracted at the judgement-point action steps, flattened alongside the human judgment vectors, and correlated. Results are broken down by problem set:
 
-- **Optimal (set 1)**: human follows the shortest path to the goal
-- **Action mistakes (set 2)**: human takes a suboptimal action (e.g., picks up an unnecessary key)
-- **Plan mistakes (set 3)**: human pursues a suboptimal plan
-- **Short-sighted plan (set 4)**: human initially follows a locally sensible but globally suboptimal route
+- **Set 1 — Optimal path**: human follows the shortest path to the goal
+- **Set 2 — Detour**: human takes a locally suboptimal action (e.g., picks up an unnecessary key)
+- **Set 3 — Backtracking**: human pursues a suboptimal plan and backtracks
+- **Set 4 — Irreversible failure**: human commits to a locally sensible but globally suboptimal route with no recovery
 
 ```bash
 julia --project=. evaluation/compute_pcc.jl
@@ -205,27 +183,3 @@ julia --project=. evaluation/analyze_abstract_structure.jl
 # → evaluation/entropy_vs_pcc.png
 ```
 
----
-
-## Experiment Index
-
-Plan files are named `<exp_id>_problem_<prob_id>_goal<k>_<participant>.dat`. `goal<k>` is 0-indexed: goal0=gem1, goal1=gem2, goal2=gem3.
-
-| Exp ID | Problem | True Goal |
-|--------|---------|-----------|
-| 1_1 | 6 | gem2 |
-| 1_2 | 7 | gem1 |
-| 1_3 | 4 | gem1 |
-| 1_4 | 12 | gem3 |
-| 2_1 | 9 | gem3 |
-| 2_2 | 5 | gem1 |
-| 2_3 | 10 | gem3 |
-| 2_4 | 8 | gem2 |
-| 3_1 | 6 | gem1 |
-| 3_2 | 4 | gem2 |
-| 3_3 | 11 | gem2 |
-| 3_4 | 8 | gem3 |
-| 4_1 | 7 | gem2 |
-| 4_2 | 5 | gem3 |
-| 4_3 | 10 | gem1 |
-| 4_4 | 12 | gem3 |

@@ -89,6 +89,8 @@ The script outputs per experiment:
 Plan files are named `<exp_id>_problem_<prob_id>_goal<k>_<participant>.dat`.
 `goal<k>` is 0-indexed: goal0=gem1, goal1=gem2, goal2=gem3.
 
+Set labels (from paper): Set 1 = optimal path, Set 2 = detour, Set 3 = backtracking, Set 4 = irreversible failure.
+
 | Exp ID | Problem | True Goal | Notes |
 |--------|---------|-----------|-------|
 | 1_1    | 6       | gem2      | |
