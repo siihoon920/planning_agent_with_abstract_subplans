@@ -26,4 +26,9 @@ Manifest.toml
 # System files
 .DS_Store
 
-# 
+# AI
+.claude/
+.gemini/
+CLAUDE.local.md
+.claudeignore
+gemini_output*/

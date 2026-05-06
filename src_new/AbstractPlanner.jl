@@ -155,18 +155,7 @@ function solve(planner::AbstractPlanner,
     else
         abs_sol = search!(abs_sol, planner, heuristic, domain, spec)
     end
-    # Wrap internal AbstractSearchSolution into native SymbolicPlanners.PathSearchSolution
-    # so that Plinf/SIPS can store it in PlanState.sol::Solution without type errors.
-    #
-    # Use :in_progress (not abs_sol.status) even when the abstract search found a
-    # complete path. Plinf's eps_greedy_act_step treats PathSearchSolution with
-    # status==:success as is_done=true and switches to RandomPolicy, causing all
-    # particles with complete plans to take random actions and diverge from the
-    # observed trajectory. This creates an asymmetry: harder goals (budget-exhausted,
-    # Stage 2 commit) keep status :in_progress → EpsilonGreedy → planned actions →
-    # high obs likelihood; easier goals (Stage 1 commit) get :success → RandomPolicy
-    # → random actions → low obs likelihood. Using :in_progress always restores
-    # symmetry: all particles follow their plans and diverge only when the goal is wrong.
+  
     empty_queue = DataStructures.PriorityQueue{UInt, Tuple{Float32,Float32,Int64}}()
     wrapped_status = abs_sol.status == :failure ? :failure : :in_progress
     sol = SymbolicPlanners.PathSearchSolution(

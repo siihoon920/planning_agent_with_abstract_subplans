@@ -33,7 +33,10 @@ Activate the environment inside Julia REPL:
 src_new/
   AbstractPlanner.jl        # AbstractPlanner struct + SIPS-compatible solve()
   PhysicalPlanner.jl        # Dijkstra physical search, PHYSICAL_CACHE
-  main_with_hierarchical.jl # Main script: runs SIPS + Hierarchical SIPS for all 16 experiments
+  main_with_hierarchical.jl # Main script: runs Hierarchical SIPS for all 16 experiments
+  main_multi_run.jl         # Runs both SIPS and Hierarchical SIPS for 5 seeded runs each
+  main_sips_budget001.jl    # SIPS only with budget_dist_args=(2, 0.01, 1)
+  make_storyboards.jl       # Regenerates storyboards from existing CSVs (no inference)
   debug_hierarchical.jl     # Debug/scratch script
 
 example/doors-keys-gems/
@@ -45,8 +48,9 @@ example/doors-keys-gems/
     storyboard_human/       # Human data storyboards
     storyboard_SIPS/        # SIPS model storyboards
     storyboard_hierarchical/# Hierarchical model storyboards
-  goal_probs_SIPS/          # goal_probs_SIPS_<exp_id>.csv
-  goal_probs_hierarchical/  # goal_probs_hierarchical_<exp_id>.csv
+  goal_probs_SIPS/          # goal_probs_SIPS_<exp_id>.csv  +  _run_N variants
+  goal_probs_hierarchical/  # goal_probs_hierarchical_<exp_id>.csv  +  _run_N variants
+  goal_probs_SIPS_budget001/# goal_probs_SIPS_budget001_<exp_id>.csv (budget_p=0.01)
 
 domains/doors-keys-gems/
   plans/                    # Human plan files (<exp_id>_problem_<N>_goal<K>_<P>.dat)
@@ -60,10 +64,16 @@ domains/doors-keys-gems/
 
 ```bash
 # Run all 16 experiments
-julia src_new/main_with_hierarchical.jl
+julia --project=. src_new/main_with_hierarchical.jl
 
 # Run specific experiments
-julia src_new/main_with_hierarchical.jl 3_3 3_4 4_3 4_4
+julia --project=. src_new/main_with_hierarchical.jl 3_3 3_4 4_3 4_4
+
+# 5 seeded runs (SIPS + Hierarchical)
+julia --project=. src_new/main_multi_run.jl
+
+# Regenerate storyboards only (reads existing CSVs, no inference)
+julia --project=. src_new/make_storyboards.jl
 ```
 
 The script outputs per experiment:
